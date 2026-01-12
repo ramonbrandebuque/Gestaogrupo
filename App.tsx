@@ -128,7 +128,7 @@ const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name
 
 // --- API Helper ---
 const apiPost = async (payload: any) => {
-  if(API_URL.includes('COLE_SUA_URL')) {
+  if(API_URL.includes('https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec')) {
     console.log("Mock API Call:", payload);
     return { result: 'success' };
   }

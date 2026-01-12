@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie, Legend, LabelList
+  AreaChart, Area, XAxis, CartesianGrid, ResponsiveContainer,
+  BarChart, Bar, Cell, LabelList
 } from 'recharts';
 
 // --- CONFIGURATION ---
@@ -212,7 +212,7 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
 };
 
 // --- Sidebar ---
-const Sidebar = ({ activePage, setPage, groupName, user, onLogout, isOpen, onClose }: any) => {
+const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) => {
   const isAdmin = user.role === 'admin';
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -790,7 +790,6 @@ const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
 const App = () => {
   const [user, setUser] = useState<UserSession | null>(null);
   const [page, setPage] = useState<PageType>('dashboard');
-  const [groupName, setGroupName] = useState('Alpha Group');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const [loading, setLoading] = useState(true);
@@ -892,8 +891,6 @@ const App = () => {
       <Sidebar 
         activePage={page} 
         setPage={setPage} 
-        groupName={groupName} 
-        setGroupName={setGroupName} 
         user={user} 
         onLogout={handleLogout} 
         isOpen={isMobileMenuOpen}

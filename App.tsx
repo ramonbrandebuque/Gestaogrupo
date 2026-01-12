@@ -5,7 +5,11 @@ import {
 } from 'recharts';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
+const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
+
+// Correção do erro: Verifica se import.meta.env existe antes de tentar ler a propriedade.
+// Se não existir (ambiente local sem build ou erro de injeção), usa o HARDCODED_URL.
+const API_URL = (import.meta.env && import.meta.env.VITE_API_URL) || HARDCODED_URL;
 
 // --- Types ---
 type PageType = 'dashboard' | 'new-bet' | 'ledger' | 'bettors' | 'ranking' | 'reports' | 'access';
@@ -123,17 +127,20 @@ const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name
 // --- API Helper ---
 const apiPost = async (payload: any) => {
   try {
-    // Google Apps Script Web App requires 'no-cors' for simple POSTs triggered from browser sometimes, 
-    // but usually standard fetch works if content-type is text/plain to avoid preflight options.
+    // CRITICAL FIX FOR GOOGLE APPS SCRIPT:
+    // We must use "text/plain" content type. 
+    // If we use "application/json", the browser sends an OPTIONS preflight request.
+    // Google Apps Script does NOT handle OPTIONS requests and will fail with CORS errors.
     const response = await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify(payload)
-      // Note: We do NOT set Content-Type: application/json to avoid CORS Preflight issues with Google Apps Script
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
     });
     return await response.json();
   } catch (error) {
-    console.error("API Error:", error);
-    // Silent fail for UX, but log it
+    console.error("API POST Error:", error);
     throw error;
   }
 };
@@ -165,7 +172,7 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
       }
       onLogin({ username: user.username, role: user.role, name: user.name, avatar: user.avatar });
     } else {
-      setError('Usuário ou senha incorretos.');
+      setError('Usuário ou senha incorretos. (Verifique se criou o usuário na planilha)');
     }
   };
 

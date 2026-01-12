@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 
 // --- CONFIGURATION ---
-// SUBSTITUA A URL ABAIXO PELA URL DO SEU GOOGLE APPS SCRIPT QUANDO ESTIVER PRONTO
 const API_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
 
 // --- Types ---
@@ -38,7 +37,7 @@ interface Bettor {
   name: string;
   date: string;
   status: 'Ativo' | 'Inativo';
-  avatar?: string; // Link direto para foto
+  avatar?: string;
 }
 
 interface User {
@@ -49,7 +48,7 @@ interface User {
   email: string;
   role: 'admin' | 'editor' | 'viewer';
   status: string;
-  avatar?: string; // Link direto para foto
+  avatar?: string;
 }
 
 interface UserSession {
@@ -59,19 +58,12 @@ interface UserSession {
   avatar?: string;
 }
 
+// Mock Data for Charts (Placeholder until enough data is collected)
 const performanceData = [
-  { name: 'Week 1', value: 2000 },
-  { name: 'Week 2', value: 3500 },
-  { name: 'Week 3', value: 2800 },
-  { name: 'Week 4', value: 4200 },
-  { name: 'Week 5', value: 5100 },
-  { name: 'Week 6', value: 6800 },
-  { name: 'Week 7', value: 7400 },
-  { name: 'Week 8', value: 8900 },
-  { name: 'Week 9', value: 9500 },
-  { name: 'Week 10', value: 11200 },
-  { name: 'Week 11', value: 11800 },
-  { name: 'Week 12', value: 12450 },
+  { name: 'S1', value: 0 },
+  { name: 'S2', value: 0 },
+  { name: 'S3', value: 0 },
+  { name: 'S4', value: 0 },
 ];
 
 // --- Helper Functions ---
@@ -86,16 +78,18 @@ const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: s
   return bets.filter(bet => {
     if (!bet.date) return false;
     
+    // Fix date parsing for simple ISO strings
     const betDateStr = bet.date.split('T')[0];
-    const betDate = new Date(betDateStr + 'T12:00:00'); 
-
+    
     switch (period) {
       case 'Hoje':
         return betDateStr === todayStr;
       case 'Mês':
+        const betDate = new Date(betDateStr + 'T12:00:00'); 
         return betDate.getMonth() === now.getMonth() && betDate.getFullYear() === now.getFullYear();
       case 'Ano':
-        return betDate.getFullYear() === now.getFullYear();
+        const betDateY = new Date(betDateStr + 'T12:00:00'); 
+        return betDateY.getFullYear() === now.getFullYear();
       case 'Periodo':
         if (!start || !end) return true;
         return betDateStr >= start && betDateStr <= end;
@@ -106,7 +100,7 @@ const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: s
   });
 };
 
-// Componente visual para Avatar (Imagem ou Iniciais)
+// Componente visual para Avatar
 const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name: string, size?: 'sm'|'md'|'lg'|'xl', className?: string }) => {
     const sizeClasses = {
         sm: 'size-8 text-xs',
@@ -121,31 +115,30 @@ const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name
     
     return (
         <div className={`${sizeClasses[size]} rounded-full bg-dark-700 flex items-center justify-center font-bold text-gray-300 uppercase border border-white/10 ${className}`}>
-            {name.substring(0, 2)}
+            {name ? name.substring(0, 2) : '??'}
         </div>
     );
 };
 
 // --- API Helper ---
 const apiPost = async (payload: any) => {
-  if(API_URL.includes('https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec')) {
-    console.log("Mock API Call:", payload);
-    return { result: 'success' };
-  }
   try {
+    // Google Apps Script Web App requires 'no-cors' for simple POSTs triggered from browser sometimes, 
+    // but usually standard fetch works if content-type is text/plain to avoid preflight options.
     const response = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify(payload)
+      // Note: We do NOT set Content-Type: application/json to avoid CORS Preflight issues with Google Apps Script
     });
     return await response.json();
   } catch (error) {
     console.error("API Error:", error);
-    alert("Erro ao salvar dados. Verifique sua conexão.");
+    // Silent fail for UX, but log it
     throw error;
   }
 };
 
-// --- Logo Component (Gelo) ---
+// --- Logo Component ---
 const IceLogo = ({ size = 'lg' }: { size?: 'sm' | 'lg' }) => {
     const isSmall = size === 'sm';
     return (
@@ -163,6 +156,13 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Fallback for initial setup if users array is empty or API fails
+    if (users.length === 0 && username.toLowerCase() === 'admin' && password === 'admin') {
+        onLogin({ username: 'admin', role: 'admin', name: 'Administrador Temporário', avatar: '' });
+        return;
+    }
+
     const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     if (user) {
       if (user.status !== 'Ativo') {
@@ -203,9 +203,6 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
              {isLoading ? 'Carregando...' : 'Entrar'}
           </button>
         </form>
-        {API_URL.includes('COLE_SUA') && (
-            <p className="mt-4 text-center text-xs text-gray-500">Modo Demo: Use <b>Ramon</b> / <b>123</b></p>
-        )}
       </div>
     </div>
   );
@@ -286,6 +283,26 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
     return acc;
   }, 0);
   
+  // Calculate simplistic chart data from actual bets if available
+  const chartData = useMemo(() => {
+     if (bets.length === 0) return performanceData;
+     // Group by Date
+     const grouped = bets.reduce((acc: any, bet) => {
+         const d = bet.date.split('T')[0];
+         if (!acc[d]) acc[d] = 0;
+         if (bet.status === 'WIN') acc[d] += Number(bet.potentialProfit);
+         if (bet.status === 'LOSS') acc[d] -= Number(bet.stake);
+         return acc;
+     }, {});
+     
+     // Accumulate profit over time
+     let runningTotal = 0;
+     return Object.keys(grouped).sort().map(date => {
+         runningTotal += grouped[date];
+         return { name: date.substring(5), value: runningTotal };
+     });
+  }, [bets]);
+
   return (
     <div className="flex flex-col gap-8 max-w-[1200px] mx-auto w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -307,13 +324,14 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
       <div className="flex flex-col rounded-xl border border-white/5 bg-dark-800 h-[300px] p-6">
         <h3 className="text-white text-lg font-bold mb-4">Evolução de Ganhos</h3>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={performanceData}>
+          <AreaChart data={chartData}>
             <defs>
               <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/><stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
+            <XAxis dataKey="name" stroke="#94a3b8" />
             <Area type="monotone" dataKey="value" stroke="#06b6d4" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
           </AreaChart>
         </ResponsiveContainer>
@@ -413,8 +431,11 @@ const ReportsPage = ({ bettors, bets }: { bettors: Bettor[], bets: Bet[] }) => {
     };
 
     const monthlyData = filteredBets.reduce((acc: any, bet) => {
+        // Simple grouping. For real "Month" reports, substring(0,7) is fine. 
+        // For "Geral", maybe show by month too? Or by week? Let's use simple date grouping.
         let key = bet.date.substring(0, 7); 
-        if (filterType === 'Mês' || filterType === 'Periodo' || filterType === 'Hoje') key = bet.date;
+        if (filterType === 'Hoje') key = bet.date;
+        
         if (!acc[key]) acc[key] = { name: key, profit: 0 };
         acc[key].profit += getBetValue(bet);
         return acc;
@@ -569,7 +590,7 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin 
 
                 return (
                 <tr key={bet.id} className="hover:bg-white/5">
-                  <td className="p-4 text-gray-400">{new Date(bet.date).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-4 text-gray-400">{bet.date ? new Date(bet.date).toLocaleDateString('pt-BR') : '-'}</td>
                   <td className="p-4 font-bold text-white">{bet.bettor}</td>
                   <td className="p-4">{bet.selections.map(sel => <div key={sel.id} className="text-xs text-gray-300">{sel.pick} <span className="text-gray-500">@ {sel.event}</span></div>)}</td>
                   <td className="p-4 text-left text-white">{formatCurrency(bet.stake)}</td>
@@ -801,23 +822,9 @@ const App = () => {
   // FETCH DATA ON LOAD
   useEffect(() => {
     const fetchData = async () => {
-      // MOCK DATA FOR PREVIEW MODE
-      if(API_URL.includes('COLE_SUA_URL')) {
-        setTimeout(() => {
-            setUsers([{id: 1, username: 'ramon', password: '123', name: 'Ramon Admin', role: 'admin', email: 'admin@test.com', status: 'Ativo', avatar: 'https://i.pravatar.cc/150?u=ramon'}]);
-            setBettors([
-                {id:1, name:'Ramon', date:'2023-01-01', status:'Ativo', avatar: 'https://i.pravatar.cc/150?u=ramon'}, 
-                {id:2, name:'João', date:'2023-01-01', status:'Ativo', avatar: 'https://i.pravatar.cc/150?u=joao'},
-                {id:3, name:'Maria', date:'2023-01-01', status:'Ativo'} 
-            ]);
-            setBets([{id:1, date: new Date().toISOString(), bettor:'Ramon', type:'Simples', selections:[{id:'1', event:'Real x Barça', pick:'Real ML', odds:2.0}], stake:100, totalOdds:2.0, potentialProfit:100, status:'WIN'}]);
-            setLoading(false);
-        }, 1000);
-        return;
-      }
-
       try {
         setLoading(true);
+        // Use a simple no-cors fetch pattern or rely on standard fetch handling redirects
         const [betsData, bettorsData, usersData] = await Promise.all([
           fetch(`${API_URL}?action=getBets`).then(res => res.json()),
           fetch(`${API_URL}?action=getBettors`).then(res => res.json()),
@@ -830,7 +837,7 @@ const App = () => {
 
       } catch (error) {
         console.error("Failed to load data", error);
-        alert("Falha ao carregar dados da planilha.");
+        alert("Falha ao carregar dados da planilha. Verifique se o Web App está publicado como 'Anyone'.");
       } finally {
         setLoading(false);
       }
@@ -842,6 +849,7 @@ const App = () => {
   const handleLogout = () => { setUser(null); setPage('dashboard'); };
 
   const handleSaveBet = async (bet: Bet) => {
+    // Optimistic Update
     const newBets = [bet, ...bets];
     setBets(newBets);
     setPage('ledger');

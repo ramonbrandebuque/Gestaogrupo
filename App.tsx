@@ -6,7 +6,7 @@ import {
 
 // --- CONFIGURATION ---
 // SUBSTITUA A URL ABAIXO PELA URL DO SEU GOOGLE APPS SCRIPT QUANDO ESTIVER PRONTO
-const API_URL = 'COLE_SUA_URL_DO_GOOGLE_SCRIPT_AQUI'; 
+const API_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
 
 // --- Types ---
 type PageType = 'dashboard' | 'new-bet' | 'ledger' | 'bettors' | 'ranking' | 'reports' | 'access';

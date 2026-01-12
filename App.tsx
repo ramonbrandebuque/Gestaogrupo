@@ -7,9 +7,9 @@ import {
 // --- CONFIGURATION ---
 const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
 
-// Correção do erro: Verifica se import.meta.env existe antes de tentar ler a propriedade.
-// Se não existir (ambiente local sem build ou erro de injeção), usa o HARDCODED_URL.
-const API_URL = (import.meta.env && import.meta.env.VITE_API_URL) || HARDCODED_URL;
+// Correção do erro: Usamos (import.meta as any) para garantir que o TypeScript não bloqueie o build
+// reclamando que 'env' não existe, caso os tipos do Vite não carreguem corretamente.
+const API_URL = ((import.meta as any).env && (import.meta as any).env.VITE_API_URL) || HARDCODED_URL;
 
 // --- Types ---
 type PageType = 'dashboard' | 'new-bet' | 'ledger' | 'bettors' | 'ranking' | 'reports' | 'access';

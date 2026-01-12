@@ -157,12 +157,6 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Fallback for initial setup if users array is empty or API fails
-    if (users.length === 0 && username.toLowerCase() === 'admin' && password === 'admin') {
-        onLogin({ username: 'admin', role: 'admin', name: 'Administrador Temporário', avatar: '' });
-        return;
-    }
-
     const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     if (user) {
       if (user.status !== 'Ativo') {

@@ -197,7 +197,7 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
   );
 };
 
-const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) => {
+const Sidebar = ({ activePage, onNavigate, user, onLogout, isOpen, onClose }: any) => {
   const isAdmin = user.role === 'admin';
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -224,7 +224,7 @@ const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) 
             </div>
             <nav className="flex flex-col gap-1">
                 {menuItems.map((item) => (
-                <button key={item.id} onClick={() => { setPage(item.id); onClose(); }} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${activePage === item.id ? 'bg-brand-500/10 text-brand-400' : 'text-gray-400 hover:text-white'}`}>
+                <button key={item.id} onClick={() => { onNavigate(item.id); onClose(); }} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${activePage === item.id ? 'bg-brand-500/10 text-brand-400' : 'text-gray-400 hover:text-white'}`}>
                     <span className="material-symbols-outlined">{item.icon}</span>
                     {item.label}
                 </button>
@@ -1000,7 +1000,17 @@ const App = () => {
   const handleLogin = (session: UserSession) => { setUser(session); setPage('dashboard'); };
   const handleLogout = () => { setUser(null); setPage('dashboard'); };
 
+  const handleNavigate = (targetPage: PageType) => {
+    // If navigating to 'new-bet' via sidebar/menu, clear editing state to ensure fresh form
+    if (targetPage === 'new-bet') {
+      setEditingBet(null);
+    }
+    setPage(targetPage);
+  };
+
   const handleSaveBet = async (bet: Bet) => {
+    // Use editBet state or check existence in array to confirm mode, but bet.id should guide us
+    // Since we clear editingBet when starting fresh, let's trust the ID check from the list
     const isEditing = bets.some(b => b.id === bet.id);
     if (isEditing) {
         setBets(bets.map(b => b.id === bet.id ? bet : b));
@@ -1071,7 +1081,7 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-dark-950 font-sans overflow-hidden">
-      <Sidebar activePage={page} setPage={setPage} user={user} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+      <Sidebar activePage={page} onNavigate={handleNavigate} user={user} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
       <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-brand-900/10 to-transparent pointer-events-none"></div>
         <div className="relative z-10">

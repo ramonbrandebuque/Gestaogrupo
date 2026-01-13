@@ -1,21 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  AreaChart, Area, XAxis, CartesianGrid, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, LabelList
 } from 'recharts';
 
 // --- CONFIGURATION ---
 const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
 
-// Solução Definitiva: Usamos @ts-ignore para garantir que o build passe, independente da configuração de tipos.
-// Isso diz ao TypeScript para ignorar qualquer erro na linha seguinte.
 // @ts-ignore
 const env = import.meta.env; 
 const API_URL = (env && env.VITE_API_URL) || HARDCODED_URL;
 
 // --- Types ---
 type PageType = 'dashboard' | 'new-bet' | 'ledger' | 'bettors' | 'ranking' | 'reports' | 'access';
-
 type BetStatus = 'PENDING' | 'WIN' | 'LOSS';
 
 interface Selection {
@@ -64,7 +61,7 @@ interface UserSession {
   avatar?: string;
 }
 
-// Mock Data for Charts (Placeholder until enough data is collected)
+// Mock Data
 const performanceData = [
   { name: 'S1', value: 0 },
   { name: 'S2', value: 0 },
@@ -83,13 +80,10 @@ const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: s
   
   return bets.filter(bet => {
     if (!bet.date) return false;
-    
-    // Fix date parsing for simple ISO strings
     const betDateStr = bet.date.split('T')[0];
     
     switch (period) {
-      case 'Hoje':
-        return betDateStr === todayStr;
+      case 'Hoje': return betDateStr === todayStr;
       case 'Mês':
         const betDate = new Date(betDateStr + 'T12:00:00'); 
         return betDate.getMonth() === now.getMonth() && betDate.getFullYear() === now.getFullYear();
@@ -99,26 +93,16 @@ const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: s
       case 'Periodo':
         if (!start || !end) return true;
         return betDateStr >= start && betDateStr <= end;
-      case 'Geral':
-      default:
-        return true;
+      default: return true;
     }
   });
 };
 
-// Componente visual para Avatar
 const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name: string, size?: 'sm'|'md'|'lg'|'xl', className?: string }) => {
-    const sizeClasses = {
-        sm: 'size-8 text-xs',
-        md: 'size-10 text-sm',
-        lg: 'size-16 text-xl',
-        xl: 'size-24 text-3xl'
-    };
-
+    const sizeClasses = { sm: 'size-8 text-xs', md: 'size-10 text-sm', lg: 'size-16 text-xl', xl: 'size-24 text-3xl' };
     if (url && url.length > 5) {
         return <img src={url} alt={name} className={`${sizeClasses[size]} rounded-full object-cover border border-white/10 ${className}`} />;
     }
-    
     return (
         <div className={`${sizeClasses[size]} rounded-full bg-dark-700 flex items-center justify-center font-bold text-gray-300 uppercase border border-white/10 ${className}`}>
             {name ? name.substring(0, 2) : '??'}
@@ -126,19 +110,12 @@ const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name
     );
 };
 
-// --- API Helper ---
 const apiPost = async (payload: any) => {
   try {
-    // CRITICAL FIX FOR GOOGLE APPS SCRIPT:
-    // We must use "text/plain" content type. 
-    // If we use "application/json", the browser sends an OPTIONS preflight request.
-    // Google Apps Script does NOT handle OPTIONS requests and will fail with CORS errors.
     const response = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
     });
     return await response.json();
   } catch (error) {
@@ -147,7 +124,6 @@ const apiPost = async (payload: any) => {
   }
 };
 
-// --- Logo Component ---
 const IceLogo = ({ size = 'lg' }: { size?: 'sm' | 'lg' }) => {
     const isSmall = size === 'sm';
     return (
@@ -157,7 +133,8 @@ const IceLogo = ({ size = 'lg' }: { size?: 'sm' | 'lg' }) => {
     );
 };
 
-// --- Login Page ---
+// --- Components ---
+
 const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSession) => void, users: User[], isLoading: boolean }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -165,26 +142,17 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Normalize input
     const inputUser = username.trim().toLowerCase();
-    
-    const user = users.find(u => {
-      // Safety check: ensure properties exist before comparison
-      const uName = (u.username || '').toLowerCase();
-      // Important: Convert stored password to string because Sheets might send it as a Number (e.g. 123)
-      const uPass = String(u.password || ''); 
-      return uName === inputUser && uPass === password;
-    });
+    const user = users.find(u => (u.username || '').toLowerCase() === inputUser && String(u.password || '') === password);
 
     if (user) {
       if (user.status !== 'Ativo') {
-        setError('Usuário inativo. Contate o administrador.');
+        setError('Usuário inativo.');
         return;
       }
       onLogin({ username: user.username, role: user.role, name: user.name, avatar: user.avatar });
     } else {
-      setError('Usuário ou senha incorretos. (Verifique se criou o usuário na planilha)');
+      setError('Usuário ou senha incorretos.');
     }
   };
 
@@ -192,7 +160,6 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
     <div className="min-h-screen flex items-center justify-center bg-dark-950 p-4 relative overflow-hidden">
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px]"></div>
-
       <div className="w-full max-w-md bg-dark-900 border border-white/10 rounded-2xl p-8 shadow-2xl relative z-10 backdrop-blur-xl">
         <div className="flex flex-col items-center mb-8 gap-4">
           <IceLogo size="lg" />
@@ -201,18 +168,11 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
              <p className="text-gray-400 text-xs mt-2">Acesse sua conta</p>
           </div>
         </div>
-
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 uppercase">Usuário</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-dark-950 border border-white/10 rounded-lg py-3 px-4 text-white focus:border-brand-500 outline-none" placeholder="Ex: Ramon" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 uppercase">Senha</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-dark-950 border border-white/10 rounded-lg py-3 px-4 text-white focus:border-brand-500 outline-none" placeholder="••••••" />
-          </div>
+          <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-dark-950 border border-white/10 rounded-lg py-3 px-4 text-white focus:border-brand-500 outline-none" placeholder="Usuário" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-dark-950 border border-white/10 rounded-lg py-3 px-4 text-white focus:border-brand-500 outline-none" placeholder="Senha" />
           {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>}
-          <button disabled={isLoading} type="submit" className="mt-2 w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-400 hover:to-brand-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg shadow-lg transition-all">
+          <button disabled={isLoading} type="submit" className="mt-2 w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-400 text-white font-bold py-3 rounded-lg shadow-lg">
              {isLoading ? 'Carregando...' : 'Entrar'}
           </button>
         </form>
@@ -221,7 +181,6 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
   );
 };
 
-// --- Sidebar ---
 const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) => {
   const isAdmin = user.role === 'admin';
   const menuItems = [
@@ -234,23 +193,10 @@ const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) 
     ...(isAdmin ? [{ id: 'access', label: 'Acessos', icon: 'admin_panel_settings' }] : []),
   ];
 
-  const handleNav = (id: string) => {
-    setPage(id);
-    onClose(); 
-  };
-
   return (
     <>
-        {/* Mobile Backdrop */}
-        {isOpen && (
-            <div 
-                className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
-                onClick={onClose}
-            ></div>
-        )}
-        
-        {/* Sidebar Element */}
-        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-dark-900 border-r border-white/5 flex flex-col h-full transition-transform duration-300 ease-in-out md:translate-x-0 md:relative ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={onClose}></div>}
+        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-dark-900 border-r border-white/5 flex flex-col h-full transition-transform duration-300 md:translate-x-0 md:relative ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full justify-between p-4">
             <div className="flex flex-col gap-6">
             <div className="flex items-center gap-3 px-2 pt-2">
@@ -258,13 +204,11 @@ const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) 
                 <div className="flex-1 min-w-0">
                   <h1 className="text-white text-xs font-black uppercase leading-tight">Gestão de Apostas<br/>em Grupo</h1>
                 </div>
-                <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white">
-                    <span className="material-symbols-outlined">close</span>
-                </button>
+                <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white"><span className="material-symbols-outlined">close</span></button>
             </div>
             <nav className="flex flex-col gap-1">
                 {menuItems.map((item) => (
-                <button key={item.id} onClick={() => handleNav(item.id)} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${activePage === item.id ? 'bg-brand-500/10 text-brand-400' : 'text-gray-400 hover:text-white'}`}>
+                <button key={item.id} onClick={() => { setPage(item.id); onClose(); }} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${activePage === item.id ? 'bg-brand-500/10 text-brand-400' : 'text-gray-400 hover:text-white'}`}>
                     <span className="material-symbols-outlined">{item.icon}</span>
                     {item.label}
                 </button>
@@ -287,7 +231,6 @@ const Sidebar = ({ activePage, setPage, user, onLogout, isOpen, onClose }: any) 
   );
 };
 
-// --- Dashboard ---
 const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () => void, isAdmin: boolean }) => {
   const totalBankroll = bets.reduce((acc, bet) => acc + (Number(bet.stake)||0), 0);
   const totalProfit = bets.reduce((acc, bet) => {
@@ -296,10 +239,8 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
     return acc;
   }, 0);
   
-  // Calculate simplistic chart data from actual bets if available
   const chartData = useMemo(() => {
      if (bets.length === 0) return performanceData;
-     // Group by Date
      const grouped = bets.reduce((acc: any, bet) => {
          const d = bet.date.split('T')[0];
          if (!acc[d]) acc[d] = 0;
@@ -307,8 +248,6 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
          if (bet.status === 'LOSS') acc[d] -= Number(bet.stake);
          return acc;
      }, {});
-     
-     // Accumulate profit over time
      let runningTotal = 0;
      return Object.keys(grouped).sort().map(date => {
          runningTotal += grouped[date];
@@ -353,10 +292,9 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
   );
 };
 
-// --- New Bet ---
 const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet) => void, onCancel: () => void, editBet: Bet | null, bettors: Bettor[] }) => {
   const [bettor, setBettor] = useState(editBet?.bettor || '');
-  const [stake, setStake] = useState<string>(editBet?.stake.toString() || '50.00');
+  const [stake, setStake] = useState<string>(editBet?.stake.toString() || '100.00'); // Default to 100
   const [selections, setSelections] = useState<Selection[]>(editBet?.selections || [{ id: Date.now().toString(), event: '', pick: '', odds: 1.0 }]);
 
   const updateSelection = (id: string, field: keyof Selection, value: string | number) => {
@@ -387,7 +325,6 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
     <div className="max-w-[960px] mx-auto w-full flex flex-col gap-6">
       <h1 className="text-white text-3xl font-black">{editBet ? 'Editar Aposta' : 'Nova Aposta'}</h1>
       <div className="bg-dark-800 rounded-xl border border-white/5 p-6 flex flex-col gap-4">
-        
         <div className="flex flex-col gap-1">
             <label className="text-white text-sm font-bold">Apostador</label>
             <select value={bettor} onChange={(e) => setBettor(e.target.value)} className="h-12 rounded-lg bg-dark-900 border border-white/5 text-white px-4 outline-none focus:border-brand-500">
@@ -395,7 +332,6 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
                 {bettors.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
             </select>
         </div>
-        
         {selections.map(sel => (
           <div key={sel.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 p-3 rounded-lg border border-white/5 bg-dark-700/50">
             <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Evento" value={sel.event} onChange={(e) => updateSelection(sel.id, 'event', e.target.value)} />
@@ -429,404 +365,246 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
   );
 };
 
-// --- Reports ---
-const ReportsPage = ({ bettors, bets }: { bettors: Bettor[], bets: Bet[] }) => {
-    const [filterType, setFilterType] = useState<'Hoje'|'Mês'|'Ano'|'Periodo'|'Geral'>('Geral');
-    const [reportMode, setReportMode] = useState<'money' | 'units'>('money');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
+  const ranking = useMemo(() => {
+    const stats: Record<string, { name: string, profit: number, bets: number, wins: number }> = {};
+    bettors.forEach(b => { stats[b.name] = { name: b.name, profit: 0, bets: 0, wins: 0 }; });
+    bets.forEach(bet => {
+      if (!stats[bet.bettor]) stats[bet.bettor] = { name: bet.bettor, profit: 0, bets: 0, wins: 0 };
+      if (bet.status !== 'PENDING') {
+         stats[bet.bettor].bets += 1;
+         if (bet.status === 'WIN') {
+            stats[bet.bettor].wins += 1;
+            stats[bet.bettor].profit += (Number(bet.potentialProfit) || 0);
+         } else if (bet.status === 'LOSS') {
+            stats[bet.bettor].profit -= (Number(bet.stake) || 0);
+         }
+      }
+    });
+    return Object.values(stats).sort((a, b) => b.profit - a.profit).map((s, i) => ({ ...s, rank: i + 1 }));
+  }, [bets, bettors]);
 
-    const filteredBets = useMemo(() => filterBetsByPeriod(bets, filterType, startDate, endDate), [bets, filterType, startDate, endDate]);
+  return (
+     <div className="flex flex-col gap-6 max-w-[800px] mx-auto w-full">
+        <h2 className="text-3xl font-black text-white">Ranking</h2>
+        <div className="flex flex-col gap-3">
+           {ranking.map((r) => (
+              <div key={r.name} className="flex items-center p-4 bg-dark-800 border border-white/5 rounded-xl gap-4">
+                 <div className={`size-8 flex items-center justify-center rounded-full font-bold ${r.rank === 1 ? 'bg-yellow-500 text-black' : r.rank === 2 ? 'bg-gray-400 text-black' : r.rank === 3 ? 'bg-amber-700 text-white' : 'bg-dark-700 text-gray-400'}`}>{r.rank}</div>
+                 <div className="flex-1">
+                    <p className="text-white font-bold">{r.name}</p>
+                    <p className="text-xs text-gray-400">{r.bets} apostas • {r.bets > 0 ? ((r.wins / r.bets) * 100).toFixed(0) : 0}% winrate</p>
+                 </div>
+                 <div className={`font-mono font-bold text-lg ${r.profit >= 0 ? 'text-success-400' : 'text-red-400'}`}>{formatCurrency(r.profit)}</div>
+              </div>
+           ))}
+        </div>
+     </div>
+  );
+};
 
-    const getBetValue = (bet: Bet) => {
-        if (bet.status === 'PENDING') return 0;
-        if (reportMode === 'money') {
-            return bet.status === 'WIN' ? Number(bet.potentialProfit) : -Number(bet.stake);
-        } else {
-            // Unit calculation: Win = (Odds - 1), Loss = -1
-            return bet.status === 'WIN' ? (bet.totalOdds - 1) : -1;
-        }
+const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin }: { bets: Bet[], onEdit: (b:Bet)=>void, onDelete: (id:number)=>void, onUpdateStatus: (id:number, s:BetStatus, p?:number, c?:boolean)=>void, onNewBet: ()=>void, isAdmin: boolean }) => {
+  const [filter, setFilter] = useState('Geral');
+  const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
+
+  const handleStatusChange = (bet: Bet, status: BetStatus) => {
+      if (status === 'WIN') onUpdateStatus(bet.id, 'WIN', bet.potentialProfit);
+      else if (status === 'LOSS') onUpdateStatus(bet.id, 'LOSS');
+  };
+  
+  const handleCashout = (bet: Bet) => {
+      const val = prompt('Valor do Cashout (R$):', bet.stake.toString());
+      if (val) {
+          const cashoutValue = parseFloat(val); 
+          const profit = cashoutValue - bet.stake;
+          onUpdateStatus(bet.id, 'WIN', profit, true);
+      }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h2 className="text-3xl font-black text-white">Histórico</h2>
+            <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                {['Geral', 'Hoje', 'Mês'].map(f => (
+                    <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                ))}
+            </div>
+        </div>
+        <div className="grid gap-4">
+            {filteredBets.length === 0 && <p className="text-center text-gray-500 py-10">Nenhuma aposta encontrada.</p>}
+            {filteredBets.map(bet => (
+                <div key={bet.id} className="bg-dark-800 border border-white/5 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between">
+                    <div className="flex flex-col gap-2 min-w-[200px]">
+                        <div className="flex items-center gap-2">
+                           <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${bet.status === 'WIN' ? 'bg-success-500/20 text-success-400' : bet.status === 'LOSS' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                               {bet.isCashout ? 'Cashout' : (bet.status === 'WIN' ? 'Green' : bet.status === 'LOSS' ? 'Red' : 'Pendente')}
+                           </span>
+                           <span className="text-xs text-gray-500">{new Date(bet.date).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-white font-bold truncate">{bet.bettor}</p>
+                        <div className="flex flex-col gap-1">
+                            {bet.selections.map((s, i) => (
+                                <p key={i} className="text-xs text-gray-300"><span className="text-gray-500">{s.event}:</span> {s.pick} <span className="text-brand-400">@{s.odds}</span></p>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex flex-col md:items-end justify-center gap-1">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Stake / Retorno</p>
+                        <div className="flex items-baseline gap-2">
+                             <span className="text-gray-400 line-through text-sm">{formatCurrency(bet.stake)}</span>
+                             <span className={`font-mono font-bold text-lg ${bet.status === 'WIN' ? 'text-success-400' : bet.status === 'LOSS' ? 'text-gray-500' : 'text-white'}`}>
+                                 {bet.status === 'LOSS' ? formatCurrency(0) : formatCurrency(bet.stake + (bet.status === 'WIN' ? bet.potentialProfit : bet.potentialProfit))} 
+                             </span>
+                        </div>
+                    </div>
+                    {isAdmin && (
+                        <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-4 mt-2 md:mt-0">
+                            {bet.status === 'PENDING' && (
+                                <>
+                                    <button onClick={() => handleStatusChange(bet, 'WIN')} className="p-2 rounded bg-success-500/10 text-success-400 hover:bg-success-500 hover:text-white transition-colors"><span className="material-symbols-outlined">check</span></button>
+                                    <button onClick={() => handleStatusChange(bet, 'LOSS')} className="p-2 rounded bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors"><span className="material-symbols-outlined">close</span></button>
+                                    <button onClick={() => handleCashout(bet)} className="p-2 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition-colors"><span className="material-symbols-outlined">attach_money</span></button>
+                                    <button onClick={() => onEdit(bet)} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white"><span className="material-symbols-outlined">edit</span></button>
+                                </>
+                            )}
+                            <button onClick={() => { if(confirm('Excluir aposta?')) onDelete(bet.id); }} className="p-2 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400"><span className="material-symbols-outlined">delete</span></button>
+                        </div>
+                    )}
+                </div>
+            ))}
+        </div>
+    </div>
+  );
+};
+
+const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: { bettors: Bettor[], onAdd: (n: string, a: string) => void, onDelete: (id: number) => void, onToggleStatus: (id: number) => void, isAdmin: boolean }) => {
+    const [name, setName] = useState('');
+    const [avatar, setAvatar] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+
+    const handleAdd = () => {
+        if (!name) return;
+        onAdd(name, avatar);
+        setName('');
+        setAvatar('');
+        setIsAdding(false);
     };
 
-    const monthlyData = filteredBets.reduce((acc: any, bet) => {
-        // Simple grouping. For real "Month" reports, substring(0,7) is fine. 
-        // For "Geral", maybe show by month too? Or by week? Let's use simple date grouping.
-        let key = bet.date.substring(0, 7); 
-        if (filterType === 'Hoje') key = bet.date;
-        
-        if (!acc[key]) acc[key] = { name: key, profit: 0 };
-        acc[key].profit += getBetValue(bet);
-        return acc;
-    }, {});
-    
-    const chartData = Object.values(monthlyData).sort((a: any, b: any) => a.name.localeCompare(b.name));
-
-    const playerData = bettors.map(b => {
-        const userProfit = filteredBets.filter(bet => bet.bettor === b.name).reduce((acc, bet) => acc + getBetValue(bet), 0);
-        return { name: b.name, value: userProfit };
-    }).sort((a,b) => b.value - a.value);
-
-    const formatValue = (val: number) => reportMode === 'money' ? formatCurrency(val) : `${val.toFixed(2)}u`;
-
     return (
-        <div className="max-w-[1200px] mx-auto w-full flex flex-col gap-8">
-             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                <div><h1 className="text-3xl font-black text-white">Relatórios</h1><p className="text-gray-400">Análise detalhada.</p></div>
-                <div className="flex flex-col items-end gap-2 w-full md:w-auto">
-                    <div className="flex bg-dark-800 p-1 rounded-lg">
-                         <button onClick={() => setReportMode('money')} className={`px-4 py-1 font-bold rounded ${reportMode==='money'?'bg-success-500 text-white':'text-gray-400'}`}>R$</button>
-                         <button onClick={() => setReportMode('units')} className={`px-4 py-1 font-bold rounded ${reportMode==='units'?'bg-purple-500 text-white':'text-gray-400'}`}>Un</button>
-                    </div>
-                    <div className="flex gap-2 bg-dark-800 p-1 rounded-lg overflow-x-auto w-full md:w-auto">
-                        {['Hoje', 'Mês', 'Ano', 'Geral', 'Periodo'].map((t) => (
-                            <button key={t} onClick={() => setFilterType(t as any)} className={`px-4 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${filterType === t ? 'bg-[#8b5cf6] text-white' : 'text-gray-400'}`}>{t}</button>
-                        ))}
-                    </div>
-                </div>
+        <div className="flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-black text-white">Apostadores</h2>
+                {isAdmin && <button onClick={() => setIsAdding(!isAdding)} className="bg-brand-500 text-white px-4 py-2 rounded-lg font-bold">Novo Apostador</button>}
             </div>
-            {filterType === 'Periodo' && <div className="flex gap-2 justify-end"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-dark-800 text-white rounded p-2"/><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-dark-800 text-white rounded p-2"/></div>}
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-dark-800 p-6 rounded-xl border border-white/5 h-[400px]">
-                    <h3 className="text-white font-bold mb-6">Lucro Geral ({reportMode === 'money' ? 'R$' : 'Un'})</h3>
-                    <ResponsiveContainer width="100%" height="85%">
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" stroke="#94a3b8" />
-                            <Bar dataKey="profit">
-                                { (chartData as any[]).map((entry, index) => <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? '#8b5cf6' : '#ef4444'} />)}
-                                <LabelList dataKey="profit" position="top" fill="#94a3b8" fontSize={12} formatter={formatValue} />
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
+            {isAdding && (
+                <div className="bg-dark-800 p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full space-y-1"><label className="text-xs font-bold text-gray-400">Nome</label><input value={name} onChange={e => setName(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" /></div>
+                    <div className="flex-1 w-full space-y-1"><label className="text-xs font-bold text-gray-400">Avatar URL (Opcional)</label><input value={avatar} onChange={e => setAvatar(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" /></div>
+                    <button onClick={handleAdd} className="bg-success-500 text-white px-6 py-2 rounded-lg font-bold h-10 w-full md:w-auto">Salvar</button>
                 </div>
-                <div className="bg-dark-800 p-6 rounded-xl border border-white/5 h-[400px]">
-                   <h3 className="text-white font-bold mb-4">Por Jogador ({reportMode === 'money' ? 'R$' : 'Un'})</h3>
-                   <ResponsiveContainer width="100%" height="90%">
-                     <BarChart data={playerData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                        <XAxis dataKey="name" stroke="#94a3b8" />
-                        <Bar dataKey="value">
-                             {playerData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.value >= 0 ? '#8b5cf6' : '#ef4444'} />)}
-                             <LabelList dataKey="value" position="top" fill="#94a3b8" fontSize={12} formatter={formatValue} />
-                        </Bar>
-                     </BarChart>
-                   </ResponsiveContainer>
-                </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {bettors.map(b => (
+                    <div key={b.id} className={`bg-dark-800 border ${b.status === 'Ativo' ? 'border-white/5' : 'border-red-900/30 opacity-60'} rounded-xl p-6 flex flex-col items-center gap-4 relative group`}>
+                        <Avatar url={b.avatar} name={b.name} size="lg" />
+                        <div className="text-center"><h3 className="text-white font-bold text-lg">{b.name}</h3><p className="text-xs text-gray-500">Desde {b.date}</p></div>
+                        {isAdmin && (
+                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => onToggleStatus(b.id)} className="p-1.5 rounded-lg bg-dark-900 text-gray-400 hover:text-white border border-white/10"><span className="material-symbols-outlined text-sm">{b.status === 'Ativo' ? 'block' : 'check_circle'}</span></button>
+                                <button onClick={() => { if(confirm('Excluir?')) onDelete(b.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border border-red-500/20"><span className="material-symbols-outlined text-sm">delete</span></button>
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
     );
 };
 
-// --- Ledger ---
-const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin }: any) => {
-  const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
+const ReportsPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
+    const data = useMemo(() => {
+        const stats = bettors.map(b => {
+            const userBets = bets.filter(bet => bet.bettor === b.name);
+            const profit = userBets.reduce((acc, bet) => {
+                if(bet.status === 'WIN') return acc + (bet.potentialProfit || 0);
+                if(bet.status === 'LOSS') return acc - (bet.stake || 0);
+                return acc;
+            }, 0);
+            return { name: b.name, profit };
+        });
+        return stats.filter(s => s.profit !== 0).sort((a,b) => b.profit - a.profit);
+    }, [bets, bettors]);
 
-  const filteredBets = bets.filter((bet: Bet) => filter === 'ALL' || bet.status === filter);
-
-  const getStatusLabel = (status: BetStatus | 'ALL') => {
-      switch(status) {
-          case 'ALL': return 'Todos';
-          case 'PENDING': return 'Pendente';
-          case 'WIN': return 'Vitória';
-          case 'LOSS': return 'Derrota';
-          default: return status;
-      }
-  };
-
-  const getStatusColor = (status: BetStatus) => {
-      switch(status) {
-          case 'WIN': return 'text-green-400 bg-green-900/30 border-green-500/30';
-          case 'LOSS': return 'text-red-400 bg-red-900/30 border-red-500/30';
-          default: return 'text-yellow-400 bg-yellow-900/30 border-yellow-500/30';
-      }
-  };
-
-  const startCashoutEdit = (bet: Bet) => {
-    setEditingId(bet.id);
-    const isLoss = bet.status === 'LOSS';
-    const isWin = bet.status === 'WIN';
-    let val = 0;
-    if (isLoss) val = -bet.stake;
-    else if (isWin) val = bet.potentialProfit;
-    setEditValue(val.toString());
-  };
-
-  const saveCashout = (id: number) => {
-    const val = parseFloat(editValue);
-    if (isNaN(val)) {
-        alert("Valor inválido");
-        return;
-    }
-    onUpdateStatus(id, 'WIN', val, true);
-    setEditingId(null);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditValue('');
-  };
-
-  return (
-    <div className="max-w-[1200px] mx-auto w-full flex flex-col gap-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div><h1 className="text-3xl font-black text-white">Histórico</h1><p className="text-gray-400">Gerencie entradas.</p></div>
-        {isAdmin && <button onClick={onNewBet} className="px-4 py-2 rounded-lg bg-brand-500 text-white font-bold w-full md:w-auto">Nova Aposta</button>}
-      </div>
-      <div className="flex gap-2 mb-2 overflow-x-auto">
-         {['ALL', 'PENDING', 'WIN', 'LOSS'].map((s) => (
-            <button key={s} onClick={() => setFilter(s as any)} className={`px-3 py-1 rounded-md text-xs font-bold uppercase whitespace-nowrap ${filter === s ? 'bg-white text-black' : 'bg-dark-800 text-gray-400'}`}>{getStatusLabel(s as any)}</button>
-         ))}
-      </div>
-      <div className="bg-dark-800 rounded-xl border border-white/5 overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
-            <thead className="bg-dark-950 text-gray-400 text-xs uppercase border-b border-white/5">
-                <tr>
-                    <th className="p-4">Data</th>
-                    <th className="p-4">Apostador</th>
-                    <th className="p-4">Seleções</th>
-                    <th className="p-4 text-left">Stake</th>
-                    <th className="p-4 text-right">Lucro/Prej.</th>
-                    <th className="p-4 text-center">Status</th>
-                    {isAdmin && <th className="p-4 text-right">Ações</th>}
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredBets.map((bet: Bet) => {
-                const isLoss = bet.status === 'LOSS';
-                const isWin = bet.status === 'WIN';
-                const profitDisplay = isLoss ? -bet.stake : (isWin ? bet.potentialProfit : bet.potentialProfit);
-                
-                let profitColor = 'text-gray-500';
-                if (bet.status === 'PENDING') profitColor = 'text-gray-500';
-                else if (profitDisplay >= 0) profitColor = 'text-green-400';
-                else profitColor = 'text-red-400';
-                
-                const standardProfit = (bet.stake * bet.totalOdds) - bet.stake;
-
-                return (
-                <tr key={bet.id} className="hover:bg-white/5">
-                  <td className="p-4 text-gray-400">{bet.date ? new Date(bet.date).toLocaleDateString('pt-BR') : '-'}</td>
-                  <td className="p-4 font-bold text-white">{bet.bettor}</td>
-                  <td className="p-4">{bet.selections.map(sel => <div key={sel.id} className="text-xs text-gray-300">{sel.pick} <span className="text-gray-500">@ {sel.event}</span></div>)}</td>
-                  <td className="p-4 text-left text-white">{formatCurrency(bet.stake)}</td>
-                  <td className="p-4 text-right font-bold">
-                    {editingId === bet.id ? (
-                        <div className="flex items-center justify-end gap-1">
-                            <span className="text-gray-500 text-xs">R$</span>
-                            <input 
-                                type="number" 
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveCashout(bet.id);
-                                    if (e.key === 'Escape') cancelEdit();
-                                }}
-                                autoFocus
-                                className="bg-dark-950 border border-brand-500 rounded px-2 py-1 w-24 text-right text-white outline-none text-sm"
-                            />
-                            <button onClick={() => saveCashout(bet.id)} className="text-green-500 hover:text-green-400"><span className="material-symbols-outlined text-lg">check</span></button>
-                            <button onClick={cancelEdit} className="text-red-500 hover:text-red-400"><span className="material-symbols-outlined text-lg">close</span></button>
-                        </div>
-                    ) : (
-                        <span className={profitColor}>{bet.status === 'PENDING' ? 'Pot. ' : ''}{formatCurrency(profitDisplay)}</span>
-                    )}
-                  </td>
-                  <td className="p-4 text-center">
-                    <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (!isAdmin) return;
-                            let nextStatus: BetStatus = 'PENDING';
-                            if (bet.status === 'PENDING') nextStatus = 'WIN';
-                            else if (bet.status === 'WIN') nextStatus = 'LOSS';
-                            else if (bet.status === 'LOSS') nextStatus = 'PENDING';
-                            onUpdateStatus(bet.id, nextStatus, standardProfit, false);
-                        }}
-                        disabled={!isAdmin}
-                        title={isAdmin ? "Clique para alterar status" : ""}
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${getStatusColor(bet.status)} ${isAdmin ? 'cursor-pointer hover:opacity-80 hover:scale-105' : ''}`}
-                    >
-                        {bet.isCashout ? 'Vitória (Cashout)' : getStatusLabel(bet.status)}
-                    </button>
-                  </td>
-                  {isAdmin && (
-                    <td className="p-4 text-right flex justify-end gap-2 items-center">
-                       {bet.status === 'PENDING' && (
-                           <>
-                            <button onClick={() => onUpdateStatus(bet.id, 'WIN')} className="text-green-500 hover:bg-green-500/20 p-1 rounded" title="Vitória"><span className="material-symbols-outlined">check</span></button>
-                            <button onClick={() => onUpdateStatus(bet.id, 'LOSS')} className="text-red-500 hover:bg-red-500/20 p-1 rounded" title="Derrota"><span className="material-symbols-outlined">close</span></button>
-                           </>
-                       )}
-                       <button onClick={() => onEdit(bet)} className="text-blue-400 hover:bg-blue-400/20 p-1 rounded" title="Editar"><span className="material-symbols-outlined">edit</span></button>
-                       <button onClick={() => startCashoutEdit(bet)} className="text-yellow-400 hover:bg-yellow-400/20 p-1 rounded" title="Cashout"><span className="material-symbols-outlined">attach_money</span></button>
-                       <button onClick={() => onDelete(bet.id)} className="text-gray-400 hover:bg-gray-700 p-1 rounded" title="Excluir"><span className="material-symbols-outlined">delete</span></button>
-                    </td>
-                  )}
-                </tr>
-              )})}
-            </tbody>
-          </table>
-      </div>
-    </div>
-  );
-};
-
-// --- Bettors ---
-const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: any) => {
-  const [newName, setNewName] = useState('');
-  const [newAvatar, setNewAvatar] = useState('');
-
-  const handleAdd = () => {
-      if(newName) {
-          onAdd(newName, newAvatar);
-          setNewName('');
-          setNewAvatar('');
-      }
-  }
-
-  return (
-    <div className="max-w-[800px] mx-auto w-full flex flex-col gap-6">
-       <h1 className="text-3xl font-black text-white">Apostadores</h1>
-       {isAdmin && (
-         <div className="bg-dark-800 p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4">
-            <input className="flex-1 bg-dark-950 border border-white/10 rounded-lg py-2 px-3 text-white outline-none focus:border-brand-500" placeholder="Nome do Jogador" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <input className="flex-1 bg-dark-950 border border-white/10 rounded-lg py-2 px-3 text-white outline-none focus:border-brand-500" placeholder="Link da Foto (URL)" value={newAvatar} onChange={(e) => setNewAvatar(e.target.value)} />
-            <button onClick={handleAdd} className="px-4 py-2 rounded-lg bg-brand-500 text-white font-bold">Adicionar</button>
-         </div>
-       )}
-       <div className="grid gap-3">
-         {bettors.map((bettor: Bettor) => (
-           <div key={bettor.id} className="bg-dark-800 p-4 rounded-xl border border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                 <Avatar url={bettor.avatar} name={bettor.name} size="md" />
-                 <div><h3 className="font-bold text-white">{bettor.name}</h3><p className="text-xs text-gray-500">{bettor.status}</p></div>
-              </div>
-              {isAdmin && <div className="flex gap-2"><button onClick={() => onToggleStatus(bettor.id)} className="text-gray-400"><span className="material-symbols-outlined">autorenew</span></button><button onClick={() => onDelete(bettor.id)} className="text-red-400"><span className="material-symbols-outlined">delete</span></button></div>}
-           </div>
-         ))}
-       </div>
-    </div>
-  );
-};
-
-// --- Access ---
-const AccessPage = ({ users, onAddUser, onDeleteUser }: any) => {
-  const [newUser, setNewUser] = useState<Partial<User>>({ role: 'viewer', status: 'Ativo' });
-  return (
-    <div className="max-w-[800px] mx-auto w-full flex flex-col gap-6">
-      <h1 className="text-3xl font-black text-white">Controle de Acesso</h1>
-      <div className="bg-dark-800 p-6 rounded-xl border border-white/10 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white" placeholder="Nome" value={newUser.name||''} onChange={e=>setNewUser({...newUser, name:e.target.value})}/>
-          <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white" placeholder="Email" value={newUser.email||''} onChange={e=>setNewUser({...newUser, email:e.target.value})}/>
-          <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white" placeholder="Usuário" value={newUser.username||''} onChange={e=>setNewUser({...newUser, username:e.target.value})}/>
-          <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white" placeholder="Senha" type="password" value={newUser.password||''} onChange={e=>setNewUser({...newUser, password:e.target.value})}/>
-          <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white md:col-span-2" placeholder="Link da Foto (URL)" value={newUser.avatar||''} onChange={e=>setNewUser({...newUser, avatar:e.target.value})}/>
-          <select className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white md:col-span-2" value={newUser.role} onChange={e=>setNewUser({...newUser, role:e.target.value as any})}><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
-          <button onClick={()=>{
-              if(newUser.username){
-                  onAddUser({...newUser, id: Date.now()});
-                  setNewUser({role:'viewer', status:'Ativo', avatar:''});
-              }
-          }} className="md:col-span-2 bg-brand-500 p-2 rounded-lg text-white font-bold">Adicionar Usuário</button>
-      </div>
-      <div className="grid gap-3">{users.map((u: User)=><div key={u.id} className="bg-dark-800 p-4 rounded-xl border border-white/5 flex justify-between"><div className="flex gap-4 items-center"><Avatar url={u.avatar} name={u.name} size="md"/><div><p className="text-white font-bold">{u.name}</p><p className="text-xs text-gray-500">{u.role}</p></div></div><button onClick={()=>onDeleteUser(u.id)} className="text-red-400"><span className="material-symbols-outlined">delete</span></button></div>)}</div>
-    </div>
-  );
-};
-
-// --- Ranking ---
-const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
-  const [filterType, setFilterType] = useState<'Hoje'|'Mês'|'Ano'|'Periodo'|'Geral'>('Geral');
-  const [rankingMode, setRankingMode] = useState<'money' | 'units'>('money');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  const filteredBets = useMemo(() => filterBetsByPeriod(bets, filterType, startDate, endDate), [bets, filterType, startDate, endDate]);
-
-  const bettorStats = useMemo(() => {
-    return bettors.map(bettor => {
-      const userBets = filteredBets.filter(b => b.bettor === bettor.name);
-      const wins = userBets.filter(b => b.status === 'WIN').length;
-      const losses = userBets.filter(b => b.status === 'LOSS').length;
-      
-      const profit = userBets.reduce((acc, b) => {
-          if (b.status === 'PENDING') return acc;
-          if (rankingMode === 'money') {
-             if (b.status === 'WIN') return acc + (Number(b.potentialProfit)||0);
-             if (b.status === 'LOSS') return acc - (Number(b.stake)||0);
-          } else {
-             if (b.status === 'WIN') return acc + (Number(b.totalOdds) - 1);
-             if (b.status === 'LOSS') return acc - 1;
-          }
-          return acc;
-      }, 0);
-
-      const totalStakeResolved = userBets.reduce((acc, b) => (b.status === 'WIN' || b.status === 'LOSS') ? acc + (Number(b.stake)||0) : acc, 0);
-      const roi = totalStakeResolved > 0 ? (profit / (rankingMode === 'money' ? totalStakeResolved : (wins + losses))) * 100 : 0;
-      return { ...bettor, totalBets: userBets.length, wins, profit, winRate: (wins+losses)>0?(wins/(wins+losses))*100:0, roi };
-    }).sort((a, b) => b.profit - a.profit);
-  }, [bettors, filteredBets, rankingMode]);
-
-  const top3 = bettorStats.slice(0, 3);
-  
-  // Show ALL bettors in the table, starting from index 0 (which corresponds to Rank #1)
-  const rankingTableData = bettorStats;
-
-  const formatValue = (val: number) => rankingMode === 'money' ? formatCurrency(val) : `${val.toFixed(2)}u`;
-
-  return (
-    <div className="max-w-[1024px] mx-auto w-full flex flex-col gap-8">
-      <div className="flex justify-between items-end">
-        <div><h2 className="text-3xl font-black text-white">Ranking</h2><p className="text-gray-400">Classificação.</p></div>
-        <div className="flex flex-col items-end gap-2">
-            <div className="flex bg-dark-800 p-1 rounded-lg">
-                <button onClick={() => setRankingMode('money')} className={`px-4 py-1 font-bold rounded ${rankingMode==='money'?'bg-success-500 text-white':'text-gray-400'}`}>R$</button>
-                <button onClick={() => setRankingMode('units')} className={`px-4 py-1 font-bold rounded ${rankingMode==='units'?'bg-purple-500 text-white':'text-gray-400'}`}>Un</button>
-            </div>
-            <div className="flex gap-2 bg-dark-800 p-1 rounded-lg">
-               {['Hoje', 'Mês', 'Ano', 'Geral', 'Periodo'].map(t => <button key={t} onClick={()=>setFilterType(t as any)} className={`px-3 py-1 text-sm ${filterType===t?'bg-[#8b5cf6] text-white rounded':'text-gray-400'}`}>{t}</button>)}
-            </div>
-            {filterType === 'Periodo' && <div className="flex gap-2"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-dark-800 text-white rounded p-1 text-xs"/><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-dark-800 text-white rounded p-1 text-xs"/></div>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 items-end pt-8">
-         {[1, 0, 2].map((idx) => {
-             const b = top3[idx];
-             if(!b) return <div key={idx}></div>;
-             return (
-                 <div key={b.id} className={`flex flex-col items-center ${idx===0?'-mt-8 z-10':''}`}>
-                     <Avatar url={b.avatar} name={b.name} size="xl" className={`border-4 ${idx===0?'border-[#8b5cf6] size-32 text-4xl':'border-gray-500'}`} />
-                     <p className="font-bold mt-2 text-white">{b.name}</p>
-                     <p className={`font-black text-xl ${b.profit>=0?'text-green-400':'text-red-400'}`}>{formatValue(b.profit)}</p>
+    return (
+        <div className="flex flex-col gap-6 h-full">
+            <h2 className="text-3xl font-black text-white">Relatórios</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[400px]">
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col">
+                    <h3 className="text-white font-bold mb-4">Lucro por Apostador</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={data} layout="vertical" margin={{ left: 40 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
+                            <XAxis type="number" stroke="#94a3b8" />
+                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} cursor={{fill: 'transparent'}} formatter={(val: number) => [`R$ ${val.toFixed(2)}`, 'Lucro']} />
+                            <Bar dataKey="profit" radius={[0, 4, 4, 0]}>
+                                {data.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? '#4ade80' : '#f87171'} />)}
+                                <LabelList dataKey="profit" position="right" fill="#fff" formatter={(val: number) => `R$ ${val.toFixed(0)}`} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
                  </div>
-             )
-         })}
-      </div>
+            </div>
+        </div>
+    );
+};
 
-      <div className="bg-dark-800 rounded-xl border border-white/5 overflow-hidden">
-        <table className="w-full text-left text-sm">
-           <thead className="bg-dark-950 text-gray-400 uppercase"><tr><th className="p-4">Pos</th><th className="p-4">Apostador</th><th className="p-4 text-right">ROI</th><th className="p-4 text-right">Lucro</th></tr></thead>
-           <tbody className="divide-y divide-white/5">
-             {rankingTableData.map((b, i) => (
-                <tr key={b.id} className="hover:bg-white/5">
-                   <td className="p-4 text-gray-500">#{i+1}</td>
-                   <td className="p-4 font-bold text-white flex items-center gap-3">
-                       <Avatar url={b.avatar} name={b.name} size="sm" />
-                       {b.name}
-                   </td>
-                   <td className={`p-4 text-right font-bold ${b.roi>=0?'text-green-400':'text-red-400'}`}>{b.roi.toFixed(1)}%</td>
-                   <td className={`p-4 text-right font-bold ${b.profit>=0?'text-green-400':'text-red-400'}`}>{formatValue(b.profit)}</td>
-                </tr>
-             ))}
-           </tbody>
-        </table>
-      </div>
-    </div>
-  );
+const AccessPage = ({ users, onAddUser, onDeleteUser }: { users: User[], onAddUser: (u: User) => void, onDeleteUser: (id: number) => void }) => {
+    const [newUser, setNewUser] = useState<Partial<User>>({ role: 'viewer', status: 'Ativo' });
+
+    const handleAdd = () => {
+        if (!newUser.username || !newUser.password || !newUser.name) return alert('Preencha os campos obrigatórios');
+        onAddUser({
+            id: Date.now(),
+            username: newUser.username,
+            password: newUser.password,
+            name: newUser.name,
+            email: newUser.email || '',
+            role: newUser.role as any,
+            status: newUser.status || 'Ativo',
+            avatar: newUser.avatar
+        });
+        setNewUser({ role: 'viewer', status: 'Ativo' });
+    };
+
+    return (
+        <div className="flex flex-col gap-6">
+            <h2 className="text-3xl font-black text-white">Controle de Acesso</h2>
+            <div className="bg-dark-800 p-6 rounded-xl border border-white/5 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="space-y-1"><label className="text-xs font-bold text-gray-400">Nome</label><input value={newUser.name || ''} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" placeholder="Nome Completo" /></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-gray-400">Usuário</label><input value={newUser.username || ''} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" placeholder="Login" /></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-gray-400">Senha</label><input type="password" value={newUser.password || ''} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" placeholder="******" /></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-gray-400">Função</label><select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white"><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Visualizador</option></select></div>
+                <button onClick={handleAdd} className="bg-brand-500 text-white font-bold py-2 px-4 rounded-lg md:col-span-4 mt-2 hover:bg-brand-400 transition-colors">Adicionar Usuário</button>
+            </div>
+            <div className="rounded-xl border border-white/5 overflow-hidden">
+                <table className="w-full text-left text-sm text-gray-400">
+                    <thead className="bg-dark-800 text-xs uppercase font-bold text-gray-200"><tr><th className="p-4">Usuário</th><th className="p-4">Login</th><th className="p-4">Função</th><th className="p-4 text-right">Ações</th></tr></thead>
+                    <tbody className="divide-y divide-white/5 bg-dark-900">
+                        {users.map(u => (
+                            <tr key={u.id} className="hover:bg-white/5">
+                                <td className="p-4 flex items-center gap-3"><Avatar name={u.name} size="sm" /><span className="text-white font-medium">{u.name}</span></td>
+                                <td className="p-4 font-mono">{u.username}</td>
+                                <td className="p-4"><span className="bg-white/10 px-2 py-1 rounded text-xs text-white capitalize">{u.role}</span></td>
+                                <td className="p-4 text-right">{u.username !== 'admin' && <button onClick={() => { if(confirm('Remover usuário?')) onDeleteUser(u.id); }} className="text-red-400 hover:text-red-300"><span className="material-symbols-outlined text-lg">delete</span></button>}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 };
 
 // --- App ---
@@ -842,21 +620,15 @@ const App = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [editingBet, setEditingBet] = useState<Bet | null>(null);
 
-  // FETCH DATA ON LOAD
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Use a simple no-cors fetch pattern or rely on standard fetch handling redirects
         const [betsData, bettorsData, usersData] = await Promise.all([
           fetch(`${API_URL}?action=getBets`).then(res => res.json()),
           fetch(`${API_URL}?action=getBettors`).then(res => res.json()),
           fetch(`${API_URL}?action=getUsers`).then(res => res.json())
         ]);
-        
-        // --- DATA NORMALIZATION ---
-        // Google Sheets via API might return keys capitalized (e.g. "Username" instead of "username")
-        // We normalize this data to ensure the app works regardless of sheet header capitalization.
 
         if(Array.isArray(betsData)) {
             const normalizedBets = betsData.map((b: any) => ({
@@ -864,14 +636,12 @@ const App = () => {
                 date: b.date || b.Date,
                 bettor: b.bettor || b.Bettor,
                 type: b.type || b.Type,
-                // Handle JSON strings if sheet sends stringified array
                 selections: Array.isArray(b.selections) ? b.selections : (Array.isArray(b.Selections) ? b.Selections : []), 
                 stake: Number(b.stake || b.Stake),
                 totalOdds: Number(b.totalOdds || b.TotalOdds),
-                // Normalize confusing/duplicate headers from user sheet
-                potentialProfit: Number(b.potentialProfit || b.PotentialProfit || b.totalOdds), // Look for 'totalOdds' (lowercase) as a fallback for profit
-                status: b.status || b.Status || b.PotentialProfit, // Look for 'PotentialProfit' as fallback for status
-                isCashout: b.isCashout || b.IsCashout || b.Status // Look for 'Status' as fallback for isCashout
+                potentialProfit: Number(b.potentialProfit || b.PotentialProfit || b.totalOdds),
+                status: b.status || b.Status || b.PotentialProfit,
+                isCashout: b.isCashout || b.IsCashout || b.Status
             }));
             setBets(normalizedBets.sort((a:Bet, b:Bet) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
@@ -891,7 +661,7 @@ const App = () => {
             const normalizedUsers = usersData.map((u: any) => ({
                 id: u.id || u.ID,
                 username: u.username || u.Username,
-                password: String(u.password || u.Password), // Force string conversion for numeric passwords
+                password: String(u.password || u.Password),
                 name: u.name || u.Name,
                 email: u.email || u.Email,
                 role: (u.role || u.Role)?.toLowerCase(), 
@@ -903,7 +673,6 @@ const App = () => {
 
       } catch (error) {
         console.error("Failed to load data", error);
-        alert("Falha ao carregar dados da planilha. Verifique se o Web App está publicado como 'Anyone'.");
       } finally {
         setLoading(false);
       }
@@ -915,27 +684,21 @@ const App = () => {
   const handleLogout = () => { setUser(null); setPage('dashboard'); };
 
   const handleSaveBet = async (bet: Bet) => {
-    // Check if editing
     const isEditing = bets.some(b => b.id === bet.id);
-
     if (isEditing) {
-        // Optimistic Update Local
         setBets(bets.map(b => b.id === bet.id ? bet : b));
         setPage('ledger');
-        // Update API
         await apiPost({ action: 'editBet', payload: bet });
     } else {
-        // Optimistic Add Local
         setBets([bet, ...bets]);
         setPage('ledger');
-        // Add API
         await apiPost({ action: 'addBet', payload: bet });
     }
   };
 
   const handleDeleteBet = async (id: number) => {
-      setBets(bets.filter(b => b.id !== id));
-      await apiPost({ action: 'deleteBet', id });
+      setBets(currentBets => currentBets.filter(b => b.id !== id));
+      await apiPost({ action: 'deleteBet', id: String(id) });
   };
 
   const handleAddBettor = async (name: string, avatar: string) => {
@@ -965,14 +728,7 @@ const App = () => {
           if (newProfit !== undefined) updated.potentialProfit = newProfit;
           return updated;
       }));
-
-      await apiPost({
-        action: 'updateBetStatus',
-        id,
-        status,
-        profit: newProfit,
-        isCashout
-      });
+      await apiPost({ action: 'updateBetStatus', id, status, profit: newProfit, isCashout });
   };
 
   const handleAddUser = async (user: User) => {
@@ -998,26 +754,15 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-dark-950 font-sans overflow-hidden">
-      <Sidebar 
-        activePage={page} 
-        setPage={setPage} 
-        user={user} 
-        onLogout={handleLogout} 
-        isOpen={isMobileMenuOpen}
-        onClose={() => setIsMobileMenuOpen(false)}
-      />
+      <Sidebar activePage={page} setPage={setPage} user={user} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
       <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-brand-900/10 to-transparent pointer-events-none"></div>
         <div className="relative z-10">
-          {/* Mobile Header */}
           <div className="md:hidden flex items-center justify-between mb-6">
-             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-white bg-dark-800 rounded-lg border border-white/10">
-                <span className="material-symbols-outlined">menu</span>
-             </button>
+             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-white bg-dark-800 rounded-lg border border-white/10"><span className="material-symbols-outlined">menu</span></button>
              <span className="font-bold text-white">BetManager</span>
-             <div className="w-10"></div> {/* Spacer for center alignment */}
+             <div className="w-10"></div>
           </div>
-
           {page === 'dashboard' && <DashboardPage bets={bets} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
           {page === 'new-bet' && <NewBetPage onSave={handleSaveBet} onCancel={() => setPage('dashboard')} editBet={editingBet} bettors={bettors} />}
           {page === 'ranking' && <RankingPage bets={bets} bettors={bettors} />}

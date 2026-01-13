@@ -310,6 +310,7 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
 
 const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet) => void, onCancel: () => void, editBet: Bet | null, bettors: Bettor[] }) => {
   const [bettor, setBettor] = useState(editBet?.bettor || '');
+  const [date, setDate] = useState(editBet?.date || new Date().toISOString().split('T')[0]);
   const [stake, setStake] = useState<string>(editBet?.stake.toString() || '100.00'); // Default to 100
   const [selections, setSelections] = useState<Selection[]>(editBet?.selections || [{ id: Date.now().toString(), event: '', pick: '', odds: 1.0 }]);
 
@@ -322,10 +323,10 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
   const potentialProfit = (numericStake * totalOdds) - numericStake;
 
   const handleSave = () => {
-    if (!bettor || numericStake <= 0) return alert("Preencha os campos obrigatórios.");
+    if (!bettor || numericStake <= 0 || !date) return alert("Preencha os campos obrigatórios.");
     onSave({
       id: editBet?.id || Date.now(),
-      date: editBet?.date || new Date().toISOString().split('T')[0],
+      date: date,
       bettor, 
       type: selections.length > 1 ? 'Múltipla' : 'Simples',
       stake: numericStake, 
@@ -341,13 +342,25 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
     <div className="max-w-[960px] mx-auto w-full flex flex-col gap-6">
       <h1 className="text-white text-3xl font-black">{editBet ? 'Editar Aposta' : 'Nova Aposta'}</h1>
       <div className="bg-dark-800 rounded-xl border border-white/5 p-6 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-            <label className="text-white text-sm font-bold">Apostador</label>
-            <select value={bettor} onChange={(e) => setBettor(e.target.value)} className="h-12 rounded-lg bg-dark-900 border border-white/5 text-white px-4 outline-none focus:border-brand-500">
-                <option value="">Selecione...</option>
-                {bettors.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-            </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+                <label className="text-white text-sm font-bold">Apostador</label>
+                <select value={bettor} onChange={(e) => setBettor(e.target.value)} className="h-12 rounded-lg bg-dark-900 border border-white/5 text-white px-4 outline-none focus:border-brand-500">
+                    <option value="">Selecione...</option>
+                    {bettors.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                </select>
+            </div>
+            <div className="flex flex-col gap-1">
+                <label className="text-white text-sm font-bold">Data da Aposta</label>
+                <input 
+                    type="date" 
+                    value={date} 
+                    onChange={(e) => setDate(e.target.value)} 
+                    className="h-12 rounded-lg bg-dark-900 border border-white/5 text-white px-4 outline-none focus:border-brand-500 [color-scheme:dark]"
+                />
+            </div>
         </div>
+
         {selections.map(sel => (
           <div key={sel.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 p-3 rounded-lg border border-white/5 bg-dark-700/50">
             <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Evento" value={sel.event} onChange={(e) => updateSelection(sel.id, 'event', e.target.value)} />

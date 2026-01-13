@@ -166,7 +166,17 @@ const LoginPage = ({ onLogin, users, isLoading }: { onLogin: (session: UserSessi
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    // Normalize input
+    const inputUser = username.trim().toLowerCase();
+    
+    const user = users.find(u => {
+      // Safety check: ensure properties exist before comparison
+      const uName = (u.username || '').toLowerCase();
+      // Important: Convert stored password to string because Sheets might send it as a Number (e.g. 123)
+      const uPass = String(u.password || ''); 
+      return uName === inputUser && uPass === password;
+    });
+
     if (user) {
       if (user.status !== 'Ativo') {
         setError('Usuário inativo. Contate o administrador.');
@@ -834,9 +844,51 @@ const App = () => {
           fetch(`${API_URL}?action=getUsers`).then(res => res.json())
         ]);
         
-        if(Array.isArray(betsData)) setBets(betsData.sort((a:Bet, b:Bet) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        if(Array.isArray(bettorsData)) setBettors(bettorsData);
-        if(Array.isArray(usersData)) setUsers(usersData);
+        // --- DATA NORMALIZATION ---
+        // Google Sheets via API might return keys capitalized (e.g. "Username" instead of "username")
+        // We normalize this data to ensure the app works regardless of sheet header capitalization.
+
+        if(Array.isArray(betsData)) {
+            const normalizedBets = betsData.map((b: any) => ({
+                id: b.id || b.ID,
+                date: b.date || b.Date,
+                bettor: b.bettor || b.Bettor,
+                type: b.type || b.Type,
+                // Handle JSON strings if sheet sends stringified array
+                selections: Array.isArray(b.selections) ? b.selections : (Array.isArray(b.Selections) ? b.Selections : []), 
+                stake: Number(b.stake || b.Stake),
+                totalOdds: Number(b.totalOdds || b.TotalOdds),
+                potentialProfit: Number(b.potentialProfit || b.PotentialProfit),
+                status: b.status || b.Status,
+                isCashout: b.isCashout || b.IsCashout
+            }));
+            setBets(normalizedBets.sort((a:Bet, b:Bet) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        }
+
+        if(Array.isArray(bettorsData)) {
+            const normalizedBettors = bettorsData.map((b: any) => ({
+                id: b.id || b.ID,
+                name: b.name || b.Name,
+                date: b.date || b.Date,
+                status: b.status || b.Status,
+                avatar: b.avatar || b.Avatar
+            }));
+            setBettors(normalizedBettors);
+        }
+
+        if(Array.isArray(usersData)) {
+            const normalizedUsers = usersData.map((u: any) => ({
+                id: u.id || u.ID,
+                username: u.username || u.Username,
+                password: String(u.password || u.Password), // Force string conversion for numeric passwords
+                name: u.name || u.Name,
+                email: u.email || u.Email,
+                role: (u.role || u.Role)?.toLowerCase(), 
+                status: u.status || u.Status,
+                avatar: u.avatar || u.Avatar
+            }));
+            setUsers(normalizedUsers);
+        }
 
       } catch (error) {
         console.error("Failed to load data", error);

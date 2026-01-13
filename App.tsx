@@ -658,6 +658,22 @@ const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
                             <p className={`text-xs font-bold ${r.roi >= 0 ? 'text-success-400' : 'text-red-400'}`}>
                                 {r.roi > 0 ? '+' : ''}{r.roi.toFixed(1)}% ROI
                             </p>
+                            <div className="flex items-center justify-center gap-3 mt-2 opacity-80">
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] uppercase font-bold text-gray-500">Win Rate</span>
+                                    <span className="text-xs font-bold text-blue-400">
+                                        {r.bets > 0 ? ((r.wins / r.bets) * 100).toFixed(0) : 0}%
+                                    </span>
+                                </div>
+                                <div className="w-px h-6 bg-white/10"></div>
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] uppercase font-bold text-gray-500">Seq.</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs font-bold text-orange-400">{r.streak}</span>
+                                        <span className="material-symbols-outlined text-orange-500 text-[10px]">local_fire_department</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -729,7 +745,20 @@ const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
 const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets: Bet[], onEdit: (b:Bet)=>void, onDelete: (id:number)=>void, onUpdateStatus: (id:number, s:BetStatus, p?:number, c?:boolean)=>void, isAdmin: boolean }) => {
   const [filter, setFilter] = useState('Geral');
   const [viewMode, setViewMode] = useState<'profit' | 'units'>('units'); // Default to units
-  const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
+  const [selectedBettor, setSelectedBettor] = useState('Todos');
+
+  const uniqueBettors = useMemo(() => {
+     const names = new Set(bets.map(b => b.bettor));
+     return ['Todos', ...Array.from(names).sort()];
+  }, [bets]);
+
+  const filteredBets = useMemo(() => {
+     let res = filterBetsByPeriod(bets, filter);
+     if (selectedBettor !== 'Todos') {
+         res = res.filter(b => b.bettor === selectedBettor);
+     }
+     return res;
+  }, [bets, filter, selectedBettor]);
 
   const toggleStatus = (bet: Bet) => {
       if (!isAdmin) return;
@@ -775,6 +804,18 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
                  <div className="flex bg-dark-800 p-1 rounded-lg border border-white/5">
                      <button onClick={() => setViewMode('units')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>u</button>
                      <button onClick={() => setViewMode('profit')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>R$</button>
+                 </div>
+
+                 <div className="flex bg-dark-800 p-1 rounded-lg border border-white/5">
+                    <select 
+                        value={selectedBettor} 
+                        onChange={(e) => setSelectedBettor(e.target.value)}
+                        className="bg-transparent text-white text-xs font-bold px-2 py-1 outline-none cursor-pointer"
+                    >
+                        {uniqueBettors.map(b => (
+                            <option key={b} value={b} className="bg-dark-800 text-white">{b}</option>
+                        ))}
+                    </select>
                  </div>
 
                 <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">

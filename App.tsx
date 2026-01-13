@@ -312,19 +312,26 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
   // LOSS = -stake (negative stake)
   const totalBankroll = useMemo(() => bets.reduce((acc, bet) => acc + (Number(bet.stake)||0), 0), [bets]);
   
-  const totalProfit = useMemo(() => bets.reduce((acc, bet) => {
-    if (bet.status === 'WIN') return acc + (Number(bet.potentialProfit)||0);
-    if (bet.status === 'LOSS') return acc - (Number(bet.stake)||0);
-    return acc;
-  }, 0), [bets]);
+  // Updated totalProfit to use .toFixed(2) to match Ranking sum exactly (avoiding floating point errors)
+  const totalProfit = useMemo(() => {
+      const sum = bets.reduce((acc, bet) => {
+        if (bet.status === 'WIN') return acc + (Number(bet.potentialProfit)||0);
+        if (bet.status === 'LOSS') return acc - (Number(bet.stake)||0);
+        return acc;
+      }, 0);
+      return Number(sum.toFixed(2));
+  }, [bets]);
 
-  const totalUnits = useMemo(() => bets.reduce((acc, bet) => {
-      const s = Number(bet.stake);
-      if (s === 0) return acc;
-      if (bet.status === 'WIN') return acc + ((Number(bet.potentialProfit) / s) || 0);
-      if (bet.status === 'LOSS') return acc - 1;
-      return acc;
-  }, 0), [bets]);
+  const totalUnits = useMemo(() => {
+      const sum = bets.reduce((acc, bet) => {
+        const s = Number(bet.stake);
+        if (s === 0) return acc;
+        if (bet.status === 'WIN') return acc + ((Number(bet.potentialProfit) / s) || 0);
+        if (bet.status === 'LOSS') return acc - 1;
+        return acc;
+      }, 0);
+      return sum; // No need to clamp here usually, but can be done if needed
+  }, [bets]);
   
   const chartData = useMemo(() => {
      if (bets.length === 0) return performanceData;
@@ -352,8 +359,13 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
      return Object.keys(grouped).sort().map(date => {
          runningProfit += grouped[date].profit;
          runningUnits += grouped[date].units;
+         
+         // Format date to DD/MM/YY
+         const [year, month, day] = date.split('-');
+         const formattedDate = `${day}/${month}/${year.slice(2)}`;
+
          return { 
-             name: date.substring(5), 
+             name: formattedDate,
              profit: Number(runningProfit.toFixed(2)), 
              units: Number(runningUnits.toFixed(2))
          };

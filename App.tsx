@@ -582,6 +582,7 @@ const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
 
 const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets: Bet[], onEdit: (b:Bet)=>void, onDelete: (id:number)=>void, onUpdateStatus: (id:number, s:BetStatus, p?:number, c?:boolean)=>void, isAdmin: boolean }) => {
   const [filter, setFilter] = useState('Geral');
+  const [viewMode, setViewMode] = useState<'profit' | 'units'>('profit');
   const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
 
   const toggleStatus = (bet: Bet) => {
@@ -623,10 +624,18 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
     <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-3xl font-black text-white">Histórico</h2>
-            <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
-                {['Geral', 'Hoje', 'Mês'].map(f => (
-                    <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
-                ))}
+            
+            <div className="flex flex-wrap gap-2">
+                 <div className="flex bg-dark-800 p-1 rounded-lg border border-white/5">
+                     <button onClick={() => setViewMode('profit')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>R$</button>
+                     <button onClick={() => setViewMode('units')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>u</button>
+                 </div>
+
+                <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                    {['Geral', 'Hoje', 'Mês'].map(f => (
+                        <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                    ))}
+                </div>
             </div>
         </div>
         
@@ -637,6 +646,7 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
                 const isLoss = bet.status === 'LOSS';
                 const profitValue = isWin ? bet.potentialProfit : (isLoss ? -bet.stake : 0);
                 const profitColor = isWin ? 'text-success-400' : (isLoss ? 'text-red-400' : 'text-gray-500');
+                const unitValue = bet.stake > 0 ? (profitValue / bet.stake) : 0;
 
                 return (
                  <div key={bet.id} className="bg-dark-800 border border-white/5 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center relative overflow-hidden">
@@ -677,11 +687,14 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
 
                     {/* Middle Section: Stake / Profit */}
                     <div className="flex flex-col items-end md:items-center px-4 md:border-l md:border-r border-white/5 h-full justify-center min-w-[180px]">
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Stake / Lucro ou Prejuízo</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{viewMode === 'profit' ? 'Stake / Lucro ou Prejuízo' : 'Stake / Unidades'}</p>
                         <div className="flex items-center gap-3">
                             <span className="text-gray-400 font-medium text-sm">{formatCurrency(bet.stake)}</span>
                             <span className={`font-black text-lg ${profitColor}`}>
-                                {profitValue > 0 ? '+' : ''}{formatCurrency(profitValue)}
+                                {viewMode === 'profit' 
+                                    ? ((profitValue > 0 ? '+' : '') + formatCurrency(profitValue))
+                                    : ((unitValue > 0 ? '+' : '') + unitValue.toFixed(2) + 'u')
+                                }
                             </span>
                         </div>
                     </div>
@@ -816,52 +829,84 @@ const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: { be
 };
 
 const ReportsPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
-    const winRateData = useMemo(() => {
-        const stats: Record<string, { wins: number, total: number }> = {};
-        bets.forEach(bet => {
-            if (bet.status === 'PENDING') return;
-            if (!stats[bet.bettor]) stats[bet.bettor] = { wins: 0, total: 0 };
-            stats[bet.bettor].total++;
-            if (bet.status === 'WIN') stats[bet.bettor].wins++;
+    const [filter, setFilter] = useState('Geral');
+    const [metric, setMetric] = useState<'profit' | 'units'>('profit');
+
+    const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
+
+    const data = useMemo(() => {
+        const stats = bettors.map(b => {
+            const userBets = filteredBets.filter(bet => bet.bettor === b.name);
+            const profit = userBets.reduce((acc, bet) => {
+                if(bet.status === 'WIN') return acc + (Number(bet.potentialProfit) || 0);
+                if(bet.status === 'LOSS') return acc - (Number(bet.stake) || 0);
+                return acc;
+            }, 0);
+            
+            const units = userBets.reduce((acc, bet) => {
+                if(bet.status === 'WIN') return acc + ((Number(bet.potentialProfit) / Number(bet.stake)) || 0);
+                if(bet.status === 'LOSS') return acc - 1;
+                return acc;
+            }, 0);
+
+            const wins = userBets.filter(bet => bet.status === 'WIN').length;
+            const settled = userBets.filter(bet => bet.status === 'WIN' || bet.status === 'LOSS').length;
+            const winRate = settled > 0 ? (wins / settled) * 100 : 0;
+            
+            return { name: b.name, profit, units, wins, winRate, settled };
         });
         
-        return Object.entries(stats)
-            .map(([name, { wins, total }]) => ({ 
-                name, 
-                value: total > 0 ? Math.round((wins / total) * 100) : 0 
-            }))
-            .sort((a, b) => b.value - a.value);
-    }, [bets]);
+        return stats.filter(s => (metric === 'profit' ? s.profit !== 0 : s.units !== 0) || s.settled > 0)
+                    .sort((a,b) => metric === 'profit' ? b.profit - a.profit : b.units - a.units);
+    }, [filteredBets, bettors, metric]);
 
     return (
-        <div className="flex flex-col gap-8">
-             <h2 className="text-3xl font-black text-white">Relatórios</h2>
-             
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 h-[400px] flex flex-col">
-                     <h3 className="text-lg font-bold text-white mb-6">Taxa de Acerto (%)</h3>
-                     <div className="flex-1 w-full min-h-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={winRateData} layout="vertical" margin={{ left: 0, right: 30, top: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#334155" />
-                                <XAxis type="number" domain={[0, 100]} hide />
-                                <YAxis dataKey="name" type="category" width={100} tick={{fill: '#94a3b8', fontSize: 12}} interval={0} />
-                                <Bar dataKey="value" fill="#06b6d4" radius={[0, 4, 4, 0]} barSize={20}>
-                                    <LabelList dataKey="value" position="right" fill="#fff" formatter={(val: number) => `${val}%`} fontSize={12} />
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                     </div>
+        <div className="flex flex-col gap-6 h-full">
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <h2 className="text-3xl font-black text-white">Relatórios</h2>
+                    <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                        {['Geral', 'Hoje', 'Mês', 'Ano'].map(f => (
+                            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex self-end bg-dark-800 p-1 rounded-lg border border-white/5">
+                     <button onClick={() => setMetric('profit')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Lucro (R$)</button>
+                     <button onClick={() => setMetric('units')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Unidades (u)</button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
+                    <h3 className="text-white font-bold mb-4">{metric === 'profit' ? 'Lucro por Apostador' : 'Unidades por Apostador'}</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={data} layout="vertical" margin={{ left: 40, right: 50 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
+                            <XAxis type="number" stroke="#94a3b8" />
+                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
+                            <Bar dataKey={metric} radius={[0, 4, 4, 0]}>
+                                {data.map((entry, index) => <Cell key={`cell-${index}`} fill={(metric === 'profit' ? entry.profit : entry.units) >= 0 ? '#3b82f6' : '#f87171'} />)}
+                                <LabelList dataKey={metric} position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => metric === 'profit' ? `R$ ${val.toFixed(0)}` : `${val.toFixed(1)}u`} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
                  </div>
 
-                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col justify-center items-center text-center">
-                     <div className="size-20 rounded-full bg-dark-700 flex items-center justify-center mb-4">
-                        <span className="material-symbols-outlined text-4xl text-gray-500">bar_chart</span>
-                     </div>
-                     <h3 className="text-xl font-bold text-white">Mais Relatórios</h3>
-                     <p className="text-gray-500 mt-2 max-w-xs text-sm">Em breve, adicionaremos mais gráficos sobre ROI, evolução de banca e performance por tipo de aposta.</p>
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
+                    <h3 className="text-white font-bold mb-4">% de Acerto (Win Rate)</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[...data].sort((a,b) => b.winRate - a.winRate)} layout="vertical" margin={{ left: 40, right: 30 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
+                            <XAxis type="number" stroke="#94a3b8" domain={[0, 100]} />
+                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
+                            <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill="#a855f7">
+                                <LabelList dataKey="winRate" position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => `${val.toFixed(0)}%`} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
                  </div>
-             </div>
+            </div>
         </div>
     );
 };

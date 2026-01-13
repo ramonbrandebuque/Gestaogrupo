@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   BarChart, Bar, Cell, LabelList
 } from 'recharts';
 
@@ -84,7 +84,7 @@ const formatDatePretty = (dateString: string) => {
     }
 };
 
-const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: string) => {
+const filterBetsByPeriod = (bets: Bet[], period: string) => {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
   
@@ -708,136 +708,6 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
   );
 };
 
-const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: { bettors: Bettor[], onAdd: (n: string, a: string) => void, onDelete: (id: number) => void, onToggleStatus: (id: number) => void, isAdmin: boolean }) => {
-    const [name, setName] = useState('');
-    const [avatar, setAvatar] = useState('');
-    const [isAdding, setIsAdding] = useState(false);
-
-    const handleAdd = () => {
-        if (!name) return;
-        onAdd(name, avatar);
-        setName('');
-        setAvatar('');
-        setIsAdding(false);
-    };
-
-    return (
-        <div className="flex flex-col gap-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-black text-white">Apostadores</h2>
-                {isAdmin && <button onClick={() => setIsAdding(!isAdding)} className="bg-brand-500 text-white px-4 py-2 rounded-lg font-bold">Novo Apostador</button>}
-            </div>
-            {isAdding && (
-                <div className="bg-dark-800 p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-end">
-                    <div className="flex-1 w-full space-y-1"><label className="text-xs font-bold text-gray-400">Nome</label><input value={name} onChange={e => setName(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" /></div>
-                    <div className="flex-1 w-full space-y-1"><label className="text-xs font-bold text-gray-400">Avatar URL (Opcional)</label><input value={avatar} onChange={e => setAvatar(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-2 text-white" /></div>
-                    <button onClick={handleAdd} className="bg-success-500 text-white px-6 py-2 rounded-lg font-bold h-10 w-full md:w-auto">Salvar</button>
-                </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {bettors.map(b => (
-                    <div key={b.id} className={`bg-dark-800 border ${b.status === 'Ativo' ? 'border-white/5' : 'border-red-900/30 opacity-60'} rounded-xl p-6 flex flex-col items-center gap-4 relative group`}>
-                        <Avatar url={b.avatar} name={b.name} size="lg" />
-                        <div className="text-center"><h3 className="text-white font-bold text-lg">{b.name}</h3><p className="text-xs text-gray-500">Desde {b.date}</p></div>
-                        {isAdmin && (
-                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => onToggleStatus(b.id)} className="p-1.5 rounded-lg bg-dark-900 text-gray-400 hover:text-white border border-white/10"><span className="material-symbols-outlined text-sm">{b.status === 'Ativo' ? 'block' : 'check_circle'}</span></button>
-                                <button onClick={() => { if(confirm('Excluir?')) onDelete(b.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border border-red-500/20"><span className="material-symbols-outlined text-sm">delete</span></button>
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-const ReportsPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
-    const [filter, setFilter] = useState('Geral');
-    const [metric, setMetric] = useState<'profit' | 'units'>('profit');
-    
-    // Use the helper to filter bets first
-    const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
-
-    const data = useMemo(() => {
-        const stats = bettors.map(b => {
-            const userBets = filteredBets.filter(bet => bet.bettor === b.name);
-            const profit = userBets.reduce((acc, bet) => {
-                if(bet.status === 'WIN') return acc + (bet.potentialProfit || 0);
-                if(bet.status === 'LOSS') return acc - (bet.stake || 0);
-                return acc;
-            }, 0);
-            
-            const units = userBets.reduce((acc, bet) => {
-                if(bet.status === 'WIN') return acc + ((Number(bet.potentialProfit) / Number(bet.stake)) || 0);
-                if(bet.status === 'LOSS') return acc - 1;
-                return acc;
-            }, 0);
-
-            const wins = userBets.filter(bet => bet.status === 'WIN').length;
-            const winRate = userBets.length > 0 ? (wins / userBets.length) * 100 : 0;
-            return { name: b.name, profit, units, wins, winRate };
-        });
-        
-        // Return sorted based on the selected metric
-        return stats.filter(s => (metric === 'profit' ? s.profit !== 0 : s.units !== 0) || s.wins > 0)
-                    .sort((a,b) => metric === 'profit' ? b.profit - a.profit : b.units - a.units);
-    }, [filteredBets, bettors, metric]);
-
-    return (
-        <div className="flex flex-col gap-6 h-full">
-            <div className="flex flex-col gap-4">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <h2 className="text-3xl font-black text-white">Relatórios</h2>
-                    <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
-                        {['Geral', 'Hoje', 'Mês', 'Ano'].map(f => (
-                            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
-                        ))}
-                    </div>
-                </div>
-                {/* Metric Selector for Charts */}
-                <div className="flex self-end bg-dark-800 p-1 rounded-lg border border-white/5">
-                     <button onClick={() => setMetric('profit')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Lucro (R$)</button>
-                     <button onClick={() => setMetric('units')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Unidades (u)</button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 {/* Lucro/Unidades Chart */}
-                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
-                    <h3 className="text-white font-bold mb-4">{metric === 'profit' ? 'Lucro por Apostador' : 'Unidades por Apostador'}</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={data} layout="vertical" margin={{ left: 40, right: 50 }}>
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
-                            <XAxis type="number" stroke="#94a3b8" />
-                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
-                            <Bar dataKey={metric} radius={[0, 4, 4, 0]}>
-                                {data.map((entry, index) => <Cell key={`cell-${index}`} fill={(metric === 'profit' ? entry.profit : entry.units) >= 0 ? '#3b82f6' : '#f87171'} />)}
-                                <LabelList dataKey={metric} position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => metric === 'profit' ? `R$ ${val.toFixed(0)}` : `${val.toFixed(1)}u`} />
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                 </div>
-
-                 {/* Win Rate % Chart */}
-                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
-                    <h3 className="text-white font-bold mb-4">% de Acerto (Win Rate)</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[...data].sort((a,b) => b.winRate - a.winRate)} layout="vertical" margin={{ left: 40, right: 30 }}>
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
-                            <XAxis type="number" stroke="#94a3b8" domain={[0, 100]} />
-                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
-                            <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill="#a855f7">
-                                <LabelList dataKey="winRate" position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => `${val.toFixed(0)}%`} />
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                 </div>
-            </div>
-        </div>
-    );
-};
-
 const AccessPage = ({ users, onAddUser, onDeleteUser }: { users: User[], onAddUser: (u: User) => void, onDeleteUser: (id: number) => void }) => {
     const [newUser, setNewUser] = useState<Partial<User>>({ role: 'viewer', status: 'Ativo' });
 
@@ -881,6 +751,117 @@ const AccessPage = ({ users, onAddUser, onDeleteUser }: { users: User[], onAddUs
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+};
+
+const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: { bettors: Bettor[], onAdd: (name: string, avatar: string) => void, onDelete: (id: number) => void, onToggleStatus: (id: number) => void, isAdmin: boolean }) => {
+  const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onAdd(name, avatar);
+    setName('');
+    setAvatar('');
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h2 className="text-3xl font-black text-white">Apostadores</h2>
+      {isAdmin && (
+        <div className="bg-dark-800 p-6 rounded-xl border border-white/5">
+            <h3 className="text-sm font-bold text-gray-400 mb-4 uppercase">Adicionar Novo Apostador</h3>
+            <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 w-full space-y-1">
+                    <label className="text-xs text-gray-500">Nome</label>
+                    <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-500 outline-none" placeholder="Nome do apostador" />
+                </div>
+                <div className="flex-1 w-full space-y-1">
+                    <label className="text-xs text-gray-500">Avatar URL (Opcional)</label>
+                    <input value={avatar} onChange={(e) => setAvatar(e.target.value)} className="w-full bg-dark-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-500 outline-none" placeholder="https://..." />
+                </div>
+                <button type="submit" className="w-full md:w-auto bg-brand-500 hover:bg-brand-400 text-white font-bold py-3 px-6 rounded-lg transition-colors">Adicionar</button>
+            </form>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {bettors.map(bettor => (
+          <div key={bettor.id} className="bg-dark-800 border border-white/5 rounded-xl p-4 flex items-center gap-4 group hover:bg-white/5 transition-colors">
+            <Avatar url={bettor.avatar} name={bettor.name} size="lg" />
+            <div className="flex-1 min-w-0">
+               <h3 className="font-bold text-white text-lg truncate">{bettor.name}</h3>
+               <div className="flex items-center gap-2 mt-1">
+                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${bettor.status === 'Ativo' ? 'bg-success-500/10 text-success-400' : 'bg-red-500/10 text-red-400'}`}>{bettor.status}</span>
+                   <span className="text-xs text-gray-500">Desde {bettor.date}</span>
+               </div>
+            </div>
+            {isAdmin && (
+                <div className="flex flex-col gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => onToggleStatus(bettor.id)} className="size-8 flex items-center justify-center rounded bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600" title={bettor.status === 'Ativo' ? 'Desativar' : 'Ativar'}>
+                        <span className="material-symbols-outlined text-sm">power_settings_new</span>
+                    </button>
+                    <button onClick={() => { if(confirm('Excluir apostador?')) onDelete(bettor.id); }} className="size-8 flex items-center justify-center rounded bg-dark-700 text-gray-400 hover:text-red-400 hover:bg-dark-600" title="Excluir">
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ReportsPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
+    const winRateData = useMemo(() => {
+        const stats: Record<string, { wins: number, total: number }> = {};
+        bets.forEach(bet => {
+            if (bet.status === 'PENDING') return;
+            if (!stats[bet.bettor]) stats[bet.bettor] = { wins: 0, total: 0 };
+            stats[bet.bettor].total++;
+            if (bet.status === 'WIN') stats[bet.bettor].wins++;
+        });
+        
+        return Object.entries(stats)
+            .map(([name, { wins, total }]) => ({ 
+                name, 
+                value: total > 0 ? Math.round((wins / total) * 100) : 0 
+            }))
+            .sort((a, b) => b.value - a.value);
+    }, [bets]);
+
+    return (
+        <div className="flex flex-col gap-8">
+             <h2 className="text-3xl font-black text-white">Relatórios</h2>
+             
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 h-[400px] flex flex-col">
+                     <h3 className="text-lg font-bold text-white mb-6">Taxa de Acerto (%)</h3>
+                     <div className="flex-1 w-full min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={winRateData} layout="vertical" margin={{ left: 0, right: 30, top: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#334155" />
+                                <XAxis type="number" domain={[0, 100]} hide />
+                                <YAxis dataKey="name" type="category" width={100} tick={{fill: '#94a3b8', fontSize: 12}} interval={0} />
+                                <Bar dataKey="value" fill="#06b6d4" radius={[0, 4, 4, 0]} barSize={20}>
+                                    <LabelList dataKey="value" position="right" fill="#fff" formatter={(val: number) => `${val}%`} fontSize={12} />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                     </div>
+                 </div>
+
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col justify-center items-center text-center">
+                     <div className="size-20 rounded-full bg-dark-700 flex items-center justify-center mb-4">
+                        <span className="material-symbols-outlined text-4xl text-gray-500">bar_chart</span>
+                     </div>
+                     <h3 className="text-xl font-bold text-white">Mais Relatórios</h3>
+                     <p className="text-gray-500 mt-2 max-w-xs text-sm">Em breve, adicionaremos mais gráficos sobre ROI, evolução de banca e performance por tipo de aposta.</p>
+                 </div>
+             </div>
         </div>
     );
 };

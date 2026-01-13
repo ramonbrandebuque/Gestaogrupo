@@ -30,12 +30,12 @@ interface Bet {
   date: string;
   bettor: string;
   type: 'Simples' | 'Múltipla';
-  selections: Selection[];
   stake: number;
   totalOdds: number;
   potentialProfit: number;
   status: BetStatus;
   isCashout?: boolean;
+  selections: Selection[];
 }
 
 interface Bettor {
@@ -372,9 +372,14 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
     onSave({
       id: editBet?.id || Date.now(),
       date: editBet?.date || new Date().toISOString().split('T')[0],
-      bettor, stake: numericStake, selections, totalOdds, potentialProfit,
+      bettor, 
+      type: selections.length > 1 ? 'Múltipla' : 'Simples',
+      stake: numericStake, 
+      totalOdds,
+      potentialProfit,
       status: editBet?.status || 'PENDING',
-      type: selections.length > 1 ? 'Múltipla' : 'Simples'
+      isCashout: false,
+      selections
     });
   };
 
@@ -858,9 +863,10 @@ const App = () => {
                 selections: Array.isArray(b.selections) ? b.selections : (Array.isArray(b.Selections) ? b.Selections : []), 
                 stake: Number(b.stake || b.Stake),
                 totalOdds: Number(b.totalOdds || b.TotalOdds),
-                potentialProfit: Number(b.potentialProfit || b.PotentialProfit),
-                status: b.status || b.Status,
-                isCashout: b.isCashout || b.IsCashout
+                // Normalize confusing/duplicate headers from user sheet
+                potentialProfit: Number(b.potentialProfit || b.PotentialProfit || b.totalOdds), // Look for 'totalOdds' (lowercase) as a fallback for profit
+                status: b.status || b.Status || b.PotentialProfit, // Look for 'PotentialProfit' as fallback for status
+                isCashout: b.isCashout || b.IsCashout || b.Status // Look for 'Status' as fallback for isCashout
             }));
             setBets(normalizedBets.sort((a:Bet, b:Bet) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }

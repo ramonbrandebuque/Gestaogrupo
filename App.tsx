@@ -74,6 +74,16 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
+const formatDatePretty = (dateString: string) => {
+    if (!dateString) return '-';
+    try {
+        const date = new Date(dateString + 'T12:00:00'); // Fix TZ issues
+        return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+    } catch (e) {
+        return dateString;
+    }
+};
+
 const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: string) => {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -84,27 +94,33 @@ const filterBetsByPeriod = (bets: Bet[], period: string, start?: string, end?: s
     
     switch (period) {
       case 'Hoje': return betDateStr === todayStr;
+      case 'Semana':
+          const d = new Date(betDateStr + 'T12:00:00');
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1); 
+          const monday = new Date(now.setDate(diff));
+          monday.setHours(0,0,0,0);
+          return d >= monday;
       case 'Mês':
         const betDate = new Date(betDateStr + 'T12:00:00'); 
         return betDate.getMonth() === now.getMonth() && betDate.getFullYear() === now.getFullYear();
       case 'Ano':
         const betDateY = new Date(betDateStr + 'T12:00:00'); 
         return betDateY.getFullYear() === now.getFullYear();
-      case 'Periodo':
-        if (!start || !end) return true;
-        return betDateStr >= start && betDateStr <= end;
+      case 'Total': return true;
+      case 'Geral': return true;
       default: return true;
     }
   });
 };
 
-const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name: string, size?: 'sm'|'md'|'lg'|'xl', className?: string }) => {
-    const sizeClasses = { sm: 'size-8 text-xs', md: 'size-10 text-sm', lg: 'size-16 text-xl', xl: 'size-24 text-3xl' };
+const Avatar = ({ url, name, size = 'md', className = '' }: { url?: string, name: string, size?: 'sm'|'md'|'lg'|'xl'|'2xl'|'xs', className?: string }) => {
+    const sizeClasses = { xs: 'size-5 text-[10px]', sm: 'size-8 text-xs', md: 'size-10 text-sm', lg: 'size-16 text-xl', xl: 'size-24 text-3xl', '2xl': 'size-32 text-4xl' };
     if (url && url.length > 5) {
-        return <img src={url} alt={name} className={`${sizeClasses[size]} rounded-full object-cover border border-white/10 ${className}`} />;
+        return <img src={url} alt={name} className={`${sizeClasses[size]} rounded-full object-cover border-2 border-dark-800 ${className}`} />;
     }
     return (
-        <div className={`${sizeClasses[size]} rounded-full bg-dark-700 flex items-center justify-center font-bold text-gray-300 uppercase border border-white/10 ${className}`}>
+        <div className={`${sizeClasses[size]} rounded-full bg-dark-700 flex items-center justify-center font-bold text-gray-300 uppercase border-2 border-dark-800 ${className}`}>
             {name ? name.substring(0, 2) : '??'}
         </div>
     );
@@ -366,38 +382,199 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
 };
 
 const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
+  const [viewMode, setViewMode] = useState<'profit' | 'units'>('profit');
+  const [filter, setFilter] = useState('Total');
+
   const ranking = useMemo(() => {
-    const stats: Record<string, { name: string, profit: number, bets: number, wins: number }> = {};
-    bettors.forEach(b => { stats[b.name] = { name: b.name, profit: 0, bets: 0, wins: 0 }; });
-    bets.forEach(bet => {
-      if (!stats[bet.bettor]) stats[bet.bettor] = { name: bet.bettor, profit: 0, bets: 0, wins: 0 };
+    const filteredBets = filterBetsByPeriod(bets, filter);
+    
+    const stats: Record<string, { name: string, profit: number, bets: number, wins: number, units: number, roi: number, avatar?: string, streak: number }> = {};
+    
+    // Initialize
+    bettors.forEach(b => { 
+        stats[b.name] = { name: b.name, profit: 0, bets: 0, wins: 0, units: 0, roi: 0, avatar: b.avatar, streak: 0 }; 
+    });
+
+    // Calc basic stats
+    filteredBets.forEach(bet => {
+      if (!stats[bet.bettor]) return; // Should not happen
+      
       if (bet.status !== 'PENDING') {
          stats[bet.bettor].bets += 1;
          if (bet.status === 'WIN') {
             stats[bet.bettor].wins += 1;
             stats[bet.bettor].profit += (Number(bet.potentialProfit) || 0);
+            const unit = (Number(bet.potentialProfit) / Number(bet.stake));
+            stats[bet.bettor].units += isNaN(unit) ? 0 : unit;
          } else if (bet.status === 'LOSS') {
             stats[bet.bettor].profit -= (Number(bet.stake) || 0);
+            stats[bet.bettor].units -= 1;
          }
       }
     });
-    return Object.values(stats).sort((a, b) => b.profit - a.profit).map((s, i) => ({ ...s, rank: i + 1 }));
-  }, [bets, bettors]);
+
+    // Calculate ROI and final clean up
+    let totalStakeMap: Record<string, number> = {};
+    filteredBets.forEach(bet => {
+        if(bet.status !== 'PENDING') {
+            totalStakeMap[bet.bettor] = (totalStakeMap[bet.bettor] || 0) + Number(bet.stake);
+        }
+    });
+
+    // Calculate Streak (Simplified: current streak from latest bets)
+    // We need bets sorted by date desc for this
+    const betsByBettor: Record<string, Bet[]> = {};
+    filteredBets.forEach(b => {
+        if(!betsByBettor[b.bettor]) betsByBettor[b.bettor] = [];
+        betsByBettor[b.bettor].push(b);
+    });
+
+    Object.keys(stats).forEach(key => {
+        const s = stats[key];
+        const totalStake = totalStakeMap[key] || 0;
+        s.roi = totalStake > 0 ? (s.profit / totalStake) * 100 : 0;
+        
+        // Streak logic
+        const userBets = betsByBettor[key] || [];
+        // Assuming bets is already sorted by date desc from App component
+        let streak = 0;
+        for (let bet of userBets) {
+           if (bet.status === 'WIN') streak++;
+           else if (bet.status === 'LOSS') break;
+        }
+        s.streak = streak;
+    });
+    
+    const sorted = Object.values(stats).sort((a, b) => {
+        if (viewMode === 'profit') return b.profit - a.profit;
+        return b.units - a.units;
+    });
+
+    return sorted.map((s, i) => ({ ...s, rank: i + 1 }));
+  }, [bets, bettors, viewMode, filter]);
+
+  const top3 = ranking.slice(0, 3);
+  const rest = ranking; 
+
+  // Helper to reorder top3 for podium: 2nd, 1st, 3rd
+  const podiumOrder = [
+      top3.find(r => r.rank === 2),
+      top3.find(r => r.rank === 1),
+      top3.find(r => r.rank === 3)
+  ].filter(Boolean);
 
   return (
-     <div className="flex flex-col gap-6 max-w-[800px] mx-auto w-full">
-        <h2 className="text-3xl font-black text-white">Ranking</h2>
-        <div className="flex flex-col gap-3">
-           {ranking.map((r) => (
-              <div key={r.name} className="flex items-center p-4 bg-dark-800 border border-white/5 rounded-xl gap-4">
-                 <div className={`size-8 flex items-center justify-center rounded-full font-bold ${r.rank === 1 ? 'bg-yellow-500 text-black' : r.rank === 2 ? 'bg-gray-400 text-black' : r.rank === 3 ? 'bg-amber-700 text-white' : 'bg-dark-700 text-gray-400'}`}>{r.rank}</div>
-                 <div className="flex-1">
-                    <p className="text-white font-bold">{r.name}</p>
-                    <p className="text-xs text-gray-400">{r.bets} apostas • {r.bets > 0 ? ((r.wins / r.bets) * 100).toFixed(0) : 0}% winrate</p>
+     <div className="flex flex-col gap-8 max-w-[1000px] mx-auto w-full">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+             <div>
+                <h2 className="text-3xl font-black text-white">Ranking de Performance</h2>
+                <p className="text-gray-400 text-sm mt-1">Acompanhe quem está liderando os lucros no grupo. 🏆</p>
+             </div>
+             
+             <div className="flex flex-col items-end gap-2">
+                 <div className="flex bg-dark-800 p-1 rounded-lg border border-white/5">
+                     {['Semana', 'Mês', 'Ano', 'Total'].map(f => (
+                        <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                     ))}
                  </div>
-                 <div className={`font-mono font-bold text-lg ${r.profit >= 0 ? 'text-success-400' : 'text-red-400'}`}>{formatCurrency(r.profit)}</div>
-              </div>
-           ))}
+                 <div className="flex bg-dark-800 p-1 rounded-lg border border-white/5">
+                     <button onClick={() => setViewMode('profit')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>R$</button>
+                     <button onClick={() => setViewMode('units')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Unidades</button>
+                 </div>
+             </div>
+        </div>
+        
+        {/* Podium */}
+        {ranking.length > 0 && (
+            <div className="flex justify-center items-end gap-4 md:gap-8 py-8 min-h-[300px]">
+                {podiumOrder.map((r: any) => (
+                    <div key={r.name} className={`flex flex-col items-center relative ${r.rank === 1 ? 'order-2 -mt-10' : r.rank === 2 ? 'order-1' : 'order-3'}`}>
+                        {r.rank === 1 && <span className="material-symbols-outlined text-yellow-400 text-4xl mb-2 animate-bounce">emoji_events</span>}
+                        
+                        <div className={`relative rounded-full p-1 ${
+                            r.rank === 1 ? 'bg-gradient-to-b from-yellow-300 to-yellow-600 shadow-[0_0_30px_rgba(234,179,8,0.4)]' : 
+                            r.rank === 2 ? 'bg-gradient-to-b from-gray-300 to-gray-500 shadow-[0_0_20px_rgba(209,213,219,0.2)]' : 
+                            'bg-gradient-to-b from-orange-400 to-orange-700 shadow-[0_0_20px_rgba(249,115,22,0.2)]'
+                        }`}>
+                            <Avatar url={r.avatar} name={r.name} size={r.rank === 1 ? 'xl' : 'lg'} className="border-4 border-dark-950" />
+                            <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap border-2 border-dark-950 ${
+                                r.rank === 1 ? 'bg-yellow-400 text-yellow-950' : r.rank === 2 ? 'bg-gray-300 text-gray-900' : 'bg-orange-500 text-white'
+                            }`}>
+                                {r.rank}º Lugar
+                            </div>
+                        </div>
+
+                        <div className="text-center mt-6">
+                            <h3 className={`font-bold text-lg ${r.rank === 1 ? 'text-yellow-400' : 'text-white'}`}>{r.name}</h3>
+                            <p className="font-black text-xl text-white">
+                                {viewMode === 'profit' ? formatCurrency(r.profit) : `${r.units.toFixed(2)}u`}
+                            </p>
+                            <p className={`text-xs font-bold ${r.roi >= 0 ? 'text-success-400' : 'text-red-400'}`}>
+                                {r.roi > 0 ? '+' : ''}{r.roi.toFixed(1)}% ROI
+                            </p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )}
+
+        {/* Detailed Table */}
+        <div className="bg-dark-800 rounded-2xl border border-white/5 overflow-hidden">
+            <div className="grid grid-cols-12 gap-4 p-4 border-b border-white/5 bg-dark-900/50 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <div className="col-span-1 text-center">Posição</div>
+                <div className="col-span-4 md:col-span-3">Apostador</div>
+                <div className="col-span-3 md:col-span-3">{viewMode === 'profit' ? 'Lucro Total' : 'Unidades'}</div>
+                <div className="col-span-2 hidden md:block text-center">ROI</div>
+                <div className="col-span-2 hidden md:block text-center">Taxa de Acerto</div>
+                <div className="col-span-2 md:col-span-1 text-right">Seq.</div>
+            </div>
+            
+            <div className="divide-y divide-white/5">
+                {rest.map((r: any) => (
+                    <div key={r.name} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-white/5 transition-colors">
+                        <div className="col-span-1 flex justify-center">
+                            <div className={`size-8 flex items-center justify-center rounded-full font-bold text-sm ${
+                                r.rank === 1 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50' : 
+                                r.rank === 2 ? 'bg-gray-500/20 text-gray-400 border border-gray-500/50' : 
+                                r.rank === 3 ? 'bg-orange-500/20 text-orange-500 border border-orange-500/50' : 
+                                'text-gray-500'
+                            }`}>
+                                {r.rank}
+                            </div>
+                        </div>
+                        <div className="col-span-4 md:col-span-3 flex items-center gap-3">
+                            <Avatar url={r.avatar} name={r.name} size="sm" />
+                            <div className="flex flex-col">
+                                <span className="font-bold text-white text-sm">{r.name}</span>
+                                <span className="text-[10px] text-gray-500">{r.bets} bets</span>
+                            </div>
+                        </div>
+                        <div className="col-span-3 md:col-span-3">
+                            {viewMode === 'profit' ? (
+                                <span className={`font-black text-sm ${r.profit >= 0 ? 'text-white' : 'text-red-400'}`}>{formatCurrency(r.profit)}</span>
+                            ) : (
+                                <span className={`font-black text-sm ${r.units >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{r.units > 0 ? '+' : ''}{r.units.toFixed(2)}u</span>
+                            )}
+                            {viewMode === 'profit' && <div className={`h-1 rounded-full mt-1 w-24 ${r.profit >= 0 ? 'bg-brand-500' : 'bg-red-500'}`} style={{ width: Math.min(Math.abs(r.profit)/50, 100) + '%' }}></div>}
+                        </div>
+                        <div className="col-span-2 hidden md:flex justify-center">
+                             <span className={`text-xs font-bold px-2 py-1 rounded ${r.roi >= 0 ? 'bg-success-500/10 text-success-400' : 'bg-red-500/10 text-red-400'}`}>{r.roi > 0 ? '+' : ''}{r.roi.toFixed(1)}%</span>
+                        </div>
+                        <div className="col-span-2 hidden md:flex flex-col gap-1 justify-center">
+                            <div className="flex justify-between text-[10px] text-gray-400">
+                                <span>{r.bets > 0 ? ((r.wins / r.bets) * 100).toFixed(0) : 0}%</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-dark-950 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500" style={{ width: `${r.bets > 0 ? ((r.wins / r.bets) * 100) : 0}%` }}></div>
+                            </div>
+                        </div>
+                        <div className="col-span-2 md:col-span-1 flex justify-end items-center gap-1">
+                            <span className="font-mono font-bold text-orange-400">{r.streak}</span>
+                            <span className="material-symbols-outlined text-orange-500 text-sm">local_fire_department</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
      </div>
   );
@@ -407,16 +584,37 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
   const [filter, setFilter] = useState('Geral');
   const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
 
-  const handleStatusChange = (bet: Bet, status: BetStatus) => {
-      if (status === 'WIN') onUpdateStatus(bet.id, 'WIN', bet.potentialProfit);
-      else if (status === 'LOSS') onUpdateStatus(bet.id, 'LOSS');
+  const toggleStatus = (bet: Bet) => {
+      if (!isAdmin) return;
+      
+      let nextStatus: BetStatus = 'PENDING';
+      let profit = 0;
+      
+      // Always recalculate standard profit to ensure we don't carry over 0 from LOSS state
+      const standardProfit = (bet.stake * bet.totalOdds) - bet.stake;
+
+      if (bet.status === 'PENDING') {
+          nextStatus = 'WIN';
+          profit = standardProfit;
+      } else if (bet.status === 'WIN') {
+          nextStatus = 'LOSS';
+          profit = 0;
+      } else {
+          // LOSS -> PENDING
+          nextStatus = 'PENDING';
+          // Restore standard potential profit for PENDING display
+          profit = standardProfit;
+      }
+      
+      // When toggling status via badge, we assume standard win/loss, not cashout
+      onUpdateStatus(bet.id, nextStatus, profit, false);
   };
   
   const handleCashout = (bet: Bet) => {
-      const val = prompt('Valor do Cashout (R$):', bet.stake.toString());
-      if (val) {
-          const cashoutValue = parseFloat(val); 
-          const profit = cashoutValue - bet.stake;
+      const val = prompt('Informe o LUCRO obtido no Cashout (Ex: 10.50):', '0.00');
+      if (val !== null) {
+          const profit = parseFloat(val.replace(',', '.')); 
+          if (isNaN(profit)) return alert('Valor inválido');
           onUpdateStatus(bet.id, 'WIN', profit, true);
       }
   };
@@ -431,48 +629,80 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets:
                 ))}
             </div>
         </div>
-        <div className="grid gap-4">
+        
+        <div className="flex flex-col gap-3">
             {filteredBets.length === 0 && <p className="text-center text-gray-500 py-10">Nenhuma aposta encontrada.</p>}
-            {filteredBets.map(bet => (
-                <div key={bet.id} className="bg-dark-800 border border-white/5 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between">
-                    <div className="flex flex-col gap-2 min-w-[200px]">
-                        <div className="flex items-center gap-2">
-                           <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${bet.status === 'WIN' ? 'bg-success-500/20 text-success-400' : bet.status === 'LOSS' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                               {bet.isCashout ? 'Cashout' : (bet.status === 'WIN' ? 'Green' : bet.status === 'LOSS' ? 'Red' : 'Pendente')}
-                           </span>
-                           <span className="text-xs text-gray-500">{new Date(bet.date).toLocaleDateString()}</span>
+            {filteredBets.map(bet => {
+                const isWin = bet.status === 'WIN';
+                const isLoss = bet.status === 'LOSS';
+                const profitValue = isWin ? bet.potentialProfit : (isLoss ? -bet.stake : 0);
+                const profitColor = isWin ? 'text-success-400' : (isLoss ? 'text-red-400' : 'text-gray-500');
+
+                return (
+                 <div key={bet.id} className="bg-dark-800 border border-white/5 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center relative overflow-hidden">
+                    {/* Decorative side bar */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-2 ${isWin ? 'bg-success-500' : isLoss ? 'bg-red-500' : 'bg-gray-600'}`}></div>
+                    
+                    {/* Left Section: Status & Info */}
+                    <div className="flex flex-col gap-2 flex-1 min-w-[200px] pl-4">
+                        <div className="flex items-center gap-3">
+                            <button 
+                                onClick={() => toggleStatus(bet)}
+                                disabled={!isAdmin}
+                                className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                    isWin ? 'bg-success-500/10 text-success-400 border-success-500/20 hover:bg-success-500/20 shadow-[0_0_10px_rgba(74,222,128,0.2)]' :
+                                    isLoss ? 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 shadow-[0_0_10px_rgba(248,113,113,0.2)]' :
+                                    'bg-gray-500/10 text-gray-400 border-gray-500/20 hover:bg-gray-500/20'
+                                } ${!isAdmin ? 'cursor-default' : 'cursor-pointer'}`}
+                            >
+                                {bet.isCashout ? 'CASHOUT' : (isWin ? 'VITÓRIA' : (isLoss ? 'DERROTA' : 'PENDENTE'))}
+                            </button>
+                            <span className="text-xs text-gray-500 font-bold">{formatDatePretty(bet.date)}</span>
                         </div>
-                        <p className="text-white font-bold truncate">{bet.bettor}</p>
-                        <div className="flex flex-col gap-1">
-                            {bet.selections.map((s, i) => (
-                                <p key={i} className="text-xs text-gray-300"><span className="text-gray-500">{s.event}:</span> {s.pick} <span className="text-brand-400">@{s.odds}</span></p>
-                            ))}
+
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                 <Avatar name={bet.bettor} size="xs" className="size-5 text-[10px]" />
+                                 <span className="text-white font-bold text-lg">{bet.bettor}</span>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                                 {bet.selections.map((s, i) => (
+                                     <span key={i} className="block">
+                                         <span className="text-gray-500">{s.event}:</span> {s.pick} <span className="text-brand-500 font-bold">@{s.odds}</span>
+                                     </span>
+                                 ))}
+                            </div>
                         </div>
                     </div>
-                    <div className="flex flex-col md:items-end justify-center gap-1">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Stake / Retorno</p>
-                        <div className="flex items-baseline gap-2">
-                             <span className="text-gray-400 line-through text-sm">{formatCurrency(bet.stake)}</span>
-                             <span className={`font-mono font-bold text-lg ${bet.status === 'WIN' ? 'text-success-400' : bet.status === 'LOSS' ? 'text-gray-500' : 'text-white'}`}>
-                                 {bet.status === 'LOSS' ? formatCurrency(0) : formatCurrency(bet.stake + (bet.status === 'WIN' ? bet.potentialProfit : bet.potentialProfit))} 
-                             </span>
+
+                    {/* Middle Section: Stake / Profit */}
+                    <div className="flex flex-col items-end md:items-center px-4 md:border-l md:border-r border-white/5 h-full justify-center min-w-[180px]">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Stake / Lucro ou Prejuízo</p>
+                        <div className="flex items-center gap-3">
+                            <span className="text-gray-400 font-medium text-sm">{formatCurrency(bet.stake)}</span>
+                            <span className={`font-black text-lg ${profitColor}`}>
+                                {profitValue > 0 ? '+' : ''}{formatCurrency(profitValue)}
+                            </span>
                         </div>
                     </div>
+
+                    {/* Right Section: Actions */}
                     {isAdmin && (
-                        <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-4 mt-2 md:mt-0">
-                            {bet.status === 'PENDING' && (
-                                <>
-                                    <button onClick={() => handleStatusChange(bet, 'WIN')} className="p-2 rounded bg-success-500/10 text-success-400 hover:bg-success-500 hover:text-white transition-colors"><span className="material-symbols-outlined">check</span></button>
-                                    <button onClick={() => handleStatusChange(bet, 'LOSS')} className="p-2 rounded bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors"><span className="material-symbols-outlined">close</span></button>
-                                    <button onClick={() => handleCashout(bet)} className="p-2 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition-colors"><span className="material-symbols-outlined">attach_money</span></button>
-                                    <button onClick={() => onEdit(bet)} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white"><span className="material-symbols-outlined">edit</span></button>
-                                </>
-                            )}
-                            <button onClick={() => { if(confirm('Excluir aposta?')) onDelete(bet.id); }} className="p-2 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400"><span className="material-symbols-outlined">delete</span></button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => handleCashout(bet)} title="Cashout / Editar Lucro" className="size-9 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white border border-blue-500/20 flex items-center justify-center transition-colors">
+                                <span className="material-symbols-outlined text-lg">attach_money</span>
+                            </button>
+                            <button onClick={() => onEdit(bet)} title="Editar" className="size-9 rounded bg-dark-700 text-gray-400 hover:bg-white/10 hover:text-white border border-white/5 flex items-center justify-center transition-colors">
+                                <span className="material-symbols-outlined text-lg">edit</span>
+                            </button>
+                            <button onClick={() => { if(confirm('Excluir?')) onDelete(bet.id); }} title="Excluir" className="size-9 rounded bg-dark-700 text-gray-400 hover:bg-red-500/20 hover:text-red-400 border border-white/5 flex items-center justify-center transition-colors">
+                                <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
                         </div>
                     )}
-                </div>
-            ))}
+                 </div>
+               );
+            })}
         </div>
     </div>
   );
@@ -523,34 +753,82 @@ const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: { be
 };
 
 const ReportsPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
+    const [filter, setFilter] = useState('Geral');
+    const [metric, setMetric] = useState<'profit' | 'units'>('profit');
+    
+    // Use the helper to filter bets first
+    const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
+
     const data = useMemo(() => {
         const stats = bettors.map(b => {
-            const userBets = bets.filter(bet => bet.bettor === b.name);
+            const userBets = filteredBets.filter(bet => bet.bettor === b.name);
             const profit = userBets.reduce((acc, bet) => {
                 if(bet.status === 'WIN') return acc + (bet.potentialProfit || 0);
                 if(bet.status === 'LOSS') return acc - (bet.stake || 0);
                 return acc;
             }, 0);
-            return { name: b.name, profit };
+            
+            const units = userBets.reduce((acc, bet) => {
+                if(bet.status === 'WIN') return acc + ((Number(bet.potentialProfit) / Number(bet.stake)) || 0);
+                if(bet.status === 'LOSS') return acc - 1;
+                return acc;
+            }, 0);
+
+            const wins = userBets.filter(bet => bet.status === 'WIN').length;
+            const winRate = userBets.length > 0 ? (wins / userBets.length) * 100 : 0;
+            return { name: b.name, profit, units, wins, winRate };
         });
-        return stats.filter(s => s.profit !== 0).sort((a,b) => b.profit - a.profit);
-    }, [bets, bettors]);
+        
+        // Return sorted based on the selected metric
+        return stats.filter(s => (metric === 'profit' ? s.profit !== 0 : s.units !== 0) || s.wins > 0)
+                    .sort((a,b) => metric === 'profit' ? b.profit - a.profit : b.units - a.units);
+    }, [filteredBets, bettors, metric]);
 
     return (
         <div className="flex flex-col gap-6 h-full">
-            <h2 className="text-3xl font-black text-white">Relatórios</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[400px]">
-                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col">
-                    <h3 className="text-white font-bold mb-4">Lucro por Apostador</h3>
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <h2 className="text-3xl font-black text-white">Relatórios</h2>
+                    <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                        {['Geral', 'Hoje', 'Mês', 'Ano'].map(f => (
+                            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                        ))}
+                    </div>
+                </div>
+                {/* Metric Selector for Charts */}
+                <div className="flex self-end bg-dark-800 p-1 rounded-lg border border-white/5">
+                     <button onClick={() => setMetric('profit')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'profit' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Lucro (R$)</button>
+                     <button onClick={() => setMetric('units')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${metric === 'units' ? 'bg-brand-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Unidades (u)</button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {/* Lucro/Unidades Chart */}
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
+                    <h3 className="text-white font-bold mb-4">{metric === 'profit' ? 'Lucro por Apostador' : 'Unidades por Apostador'}</h3>
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={data} layout="vertical" margin={{ left: 40 }}>
+                        <BarChart data={data} layout="vertical" margin={{ left: 40, right: 50 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
                             <XAxis type="number" stroke="#94a3b8" />
                             <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
-                            <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} cursor={{fill: 'transparent'}} formatter={(val: number) => [`R$ ${val.toFixed(2)}`, 'Lucro']} />
-                            <Bar dataKey="profit" radius={[0, 4, 4, 0]}>
-                                {data.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? '#4ade80' : '#f87171'} />)}
-                                <LabelList dataKey="profit" position="right" fill="#fff" formatter={(val: number) => `R$ ${val.toFixed(0)}`} />
+                            <Bar dataKey={metric} radius={[0, 4, 4, 0]}>
+                                {data.map((entry, index) => <Cell key={`cell-${index}`} fill={(metric === 'profit' ? entry.profit : entry.units) >= 0 ? '#3b82f6' : '#f87171'} />)}
+                                <LabelList dataKey={metric} position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => metric === 'profit' ? `R$ ${val.toFixed(0)}` : `${val.toFixed(1)}u`} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                 </div>
+
+                 {/* Win Rate % Chart */}
+                 <div className="bg-dark-800 p-6 rounded-xl border border-white/5 flex flex-col h-[400px]">
+                    <h3 className="text-white font-bold mb-4">% de Acerto (Win Rate)</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[...data].sort((a,b) => b.winRate - a.winRate)} layout="vertical" margin={{ left: 40, right: 30 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
+                            <XAxis type="number" stroke="#94a3b8" domain={[0, 100]} />
+                            <YAxis type="category" dataKey="name" stroke="#94a3b8" width={100} />
+                            <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill="#a855f7">
+                                <LabelList dataKey="winRate" position="right" fill="#fff" fontWeight="bold" formatter={(val: number) => `${val.toFixed(0)}%`} />
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>

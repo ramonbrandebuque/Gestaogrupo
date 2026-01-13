@@ -403,7 +403,7 @@ const RankingPage = ({ bets, bettors }: { bets: Bet[], bettors: Bettor[] }) => {
   );
 };
 
-const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin }: { bets: Bet[], onEdit: (b:Bet)=>void, onDelete: (id:number)=>void, onUpdateStatus: (id:number, s:BetStatus, p?:number, c?:boolean)=>void, onNewBet: ()=>void, isAdmin: boolean }) => {
+const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, isAdmin }: { bets: Bet[], onEdit: (b:Bet)=>void, onDelete: (id:number)=>void, onUpdateStatus: (id:number, s:BetStatus, p?:number, c?:boolean)=>void, isAdmin: boolean }) => {
   const [filter, setFilter] = useState('Geral');
   const filteredBets = useMemo(() => filterBetsByPeriod(bets, filter), [bets, filter]);
 
@@ -425,13 +425,10 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin 
     <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-3xl font-black text-white">Histórico</h2>
-            <div className="flex gap-2 items-center">
-                 {isAdmin && <button onClick={onNewBet} className="px-4 py-2 rounded-lg bg-brand-500 text-white font-bold text-sm hover:bg-brand-400 transition-colors">Nova Aposta</button>}
-                 <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
-                    {['Geral', 'Hoje', 'Mês'].map(f => (
-                        <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
-                    ))}
-                </div>
+            <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                {['Geral', 'Hoje', 'Mês'].map(f => (
+                    <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                ))}
             </div>
         </div>
         <div className="grid gap-4">
@@ -635,7 +632,7 @@ const App = () => {
 
         if(Array.isArray(betsData)) {
             const normalizedBets = betsData.map((b: any) => ({
-                id: b.id || b.ID,
+                id: Number(b.id || b.ID), // Forced number cast for consistency
                 date: b.date || b.Date,
                 bettor: b.bettor || b.Bettor,
                 type: b.type || b.Type,
@@ -651,7 +648,7 @@ const App = () => {
 
         if(Array.isArray(bettorsData)) {
             const normalizedBettors = bettorsData.map((b: any) => ({
-                id: b.id || b.ID,
+                id: Number(b.id || b.ID),
                 name: b.name || b.Name,
                 date: b.date || b.Date,
                 status: b.status || b.Status,
@@ -662,7 +659,7 @@ const App = () => {
 
         if(Array.isArray(usersData)) {
             const normalizedUsers = usersData.map((u: any) => ({
-                id: u.id || u.ID,
+                id: Number(u.id || u.ID),
                 username: u.username || u.Username,
                 password: String(u.password || u.Password),
                 name: u.name || u.Name,
@@ -701,7 +698,7 @@ const App = () => {
 
   const handleDeleteBet = async (id: number) => {
       setBets(currentBets => currentBets.filter(b => b.id !== id));
-      await apiPost({ action: 'deleteBet', id: String(id) });
+      await apiPost({ action: 'deleteBet', id: id }); // Send ID as number
   };
 
   const handleAddBettor = async (name: string, avatar: string) => {
@@ -769,7 +766,7 @@ const App = () => {
           {page === 'dashboard' && <DashboardPage bets={bets} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
           {page === 'new-bet' && <NewBetPage onSave={handleSaveBet} onCancel={() => setPage('dashboard')} editBet={editingBet} bettors={bettors} />}
           {page === 'ranking' && <RankingPage bets={bets} bettors={bettors} />}
-          {page === 'ledger' && <LedgerPage bets={bets} onEdit={(b: Bet) => { setEditingBet(b); setPage('new-bet'); }} onDelete={handleDeleteBet} onUpdateStatus={handleUpdateStatus} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
+          {page === 'ledger' && <LedgerPage bets={bets} onEdit={(b: Bet) => { setEditingBet(b); setPage('new-bet'); }} onDelete={handleDeleteBet} onUpdateStatus={handleUpdateStatus} isAdmin={user.role === 'admin'} />}
           {page === 'bettors' && <BettorsPage bettors={bettors} onAdd={handleAddBettor} onDelete={handleDeleteBettor} onToggleStatus={handleToggleBettorStatus} isAdmin={user.role === 'admin'} />}
           {page === 'reports' && <ReportsPage bettors={bettors} bets={bets} />}
           {page === 'access' && <AccessPage users={users} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} />}

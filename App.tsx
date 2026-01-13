@@ -713,7 +713,7 @@ const BettorsPage = ({ bettors, onAdd, onDelete, onToggleStatus, isAdmin }: any)
 };
 
 // --- Access ---
-const AccessPage = ({ users, setUsers }: any) => {
+const AccessPage = ({ users, onAddUser, onDeleteUser }: any) => {
   const [newUser, setNewUser] = useState<Partial<User>>({ role: 'viewer', status: 'Ativo' });
   return (
     <div className="max-w-[800px] mx-auto w-full flex flex-col gap-6">
@@ -725,9 +725,14 @@ const AccessPage = ({ users, setUsers }: any) => {
           <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white" placeholder="Senha" type="password" value={newUser.password||''} onChange={e=>setNewUser({...newUser, password:e.target.value})}/>
           <input className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white md:col-span-2" placeholder="Link da Foto (URL)" value={newUser.avatar||''} onChange={e=>setNewUser({...newUser, avatar:e.target.value})}/>
           <select className="bg-dark-950 border border-white/10 rounded-lg p-2 text-white md:col-span-2" value={newUser.role} onChange={e=>setNewUser({...newUser, role:e.target.value as any})}><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
-          <button onClick={()=>{if(newUser.username){setUsers([...users,{...newUser,id:Date.now()}]);setNewUser({role:'viewer',status:'Ativo',avatar:''})}}} className="md:col-span-2 bg-brand-500 p-2 rounded-lg text-white font-bold">Adicionar Usuário</button>
+          <button onClick={()=>{
+              if(newUser.username){
+                  onAddUser({...newUser, id: Date.now()});
+                  setNewUser({role:'viewer', status:'Ativo', avatar:''});
+              }
+          }} className="md:col-span-2 bg-brand-500 p-2 rounded-lg text-white font-bold">Adicionar Usuário</button>
       </div>
-      <div className="grid gap-3">{users.map((u: User)=><div key={u.id} className="bg-dark-800 p-4 rounded-xl border border-white/5 flex justify-between"><div className="flex gap-4 items-center"><Avatar url={u.avatar} name={u.name} size="md"/><div><p className="text-white font-bold">{u.name}</p><p className="text-xs text-gray-500">{u.role}</p></div></div><button onClick={()=>setUsers(users.filter((x:User)=>x.id!==u.id))} className="text-red-400"><span className="material-symbols-outlined">delete</span></button></div>)}</div>
+      <div className="grid gap-3">{users.map((u: User)=><div key={u.id} className="bg-dark-800 p-4 rounded-xl border border-white/5 flex justify-between"><div className="flex gap-4 items-center"><Avatar url={u.avatar} name={u.name} size="md"/><div><p className="text-white font-bold">{u.name}</p><p className="text-xs text-gray-500">{u.role}</p></div></div><button onClick={()=>onDeleteUser(u.id)} className="text-red-400"><span className="material-symbols-outlined">delete</span></button></div>)}</div>
     </div>
   );
 };
@@ -910,11 +915,27 @@ const App = () => {
   const handleLogout = () => { setUser(null); setPage('dashboard'); };
 
   const handleSaveBet = async (bet: Bet) => {
-    // Optimistic Update
-    const newBets = [bet, ...bets];
-    setBets(newBets);
-    setPage('ledger');
-    await apiPost({ action: 'addBet', payload: bet });
+    // Check if editing
+    const isEditing = bets.some(b => b.id === bet.id);
+
+    if (isEditing) {
+        // Optimistic Update Local
+        setBets(bets.map(b => b.id === bet.id ? bet : b));
+        setPage('ledger');
+        // Update API
+        await apiPost({ action: 'editBet', payload: bet });
+    } else {
+        // Optimistic Add Local
+        setBets([bet, ...bets]);
+        setPage('ledger');
+        // Add API
+        await apiPost({ action: 'addBet', payload: bet });
+    }
+  };
+
+  const handleDeleteBet = async (id: number) => {
+      setBets(bets.filter(b => b.id !== id));
+      await apiPost({ action: 'deleteBet', id });
   };
 
   const handleAddBettor = async (name: string, avatar: string) => {
@@ -923,9 +944,19 @@ const App = () => {
     await apiPost({ action: 'addBettor', payload: newBettor });
   };
 
-  const handleDeleteBettor = (id: number) => setBettors(bettors.filter(b => b.id !== id));
+  const handleDeleteBettor = async (id: number) => {
+      setBettors(bettors.filter(b => b.id !== id));
+      await apiPost({ action: 'deleteBettor', id });
+  };
   
-  const handleToggleBettorStatus = (id: number) => setBettors(bettors.map(b => b.id===id ? {...b, status: b.status==='Ativo'?'Inativo':'Ativo'} : b));
+  const handleToggleBettorStatus = async (id: number) => {
+      const bettor = bettors.find(b => b.id === id);
+      if(bettor) {
+          const newStatus = bettor.status === 'Ativo' ? 'Inativo' : 'Ativo';
+          setBettors(bettors.map(b => b.id === id ? { ...b, status: newStatus } : b));
+          await apiPost({ action: 'updateBettorStatus', id, status: newStatus });
+      }
+  };
 
   const handleUpdateStatus = async (id: number, status: BetStatus, newProfit?: number, isCashout: boolean = false) => {
       setBets(bets.map(b => {
@@ -942,6 +973,16 @@ const App = () => {
         profit: newProfit,
         isCashout
       });
+  };
+
+  const handleAddUser = async (user: User) => {
+      setUsers([...users, user]);
+      await apiPost({ action: 'addUser', payload: user });
+  };
+
+  const handleDeleteUser = async (id: number) => {
+      setUsers(users.filter(u => u.id !== id));
+      await apiPost({ action: 'deleteUser', id });
   };
 
   if (loading) {
@@ -980,10 +1021,10 @@ const App = () => {
           {page === 'dashboard' && <DashboardPage bets={bets} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
           {page === 'new-bet' && <NewBetPage onSave={handleSaveBet} onCancel={() => setPage('dashboard')} editBet={editingBet} bettors={bettors} />}
           {page === 'ranking' && <RankingPage bets={bets} bettors={bettors} />}
-          {page === 'ledger' && <LedgerPage bets={bets} onEdit={(b: Bet) => { setEditingBet(b); setPage('new-bet'); }} onDelete={(id: number) => setBets(bets.filter(b => b.id !== id))} onUpdateStatus={handleUpdateStatus} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
+          {page === 'ledger' && <LedgerPage bets={bets} onEdit={(b: Bet) => { setEditingBet(b); setPage('new-bet'); }} onDelete={handleDeleteBet} onUpdateStatus={handleUpdateStatus} onNewBet={() => { setEditingBet(null); setPage('new-bet'); }} isAdmin={user.role === 'admin'} />}
           {page === 'bettors' && <BettorsPage bettors={bettors} onAdd={handleAddBettor} onDelete={handleDeleteBettor} onToggleStatus={handleToggleBettorStatus} isAdmin={user.role === 'admin'} />}
           {page === 'reports' && <ReportsPage bettors={bettors} bets={bets} />}
-          {page === 'access' && <AccessPage users={users} setUsers={setUsers} />}
+          {page === 'access' && <AccessPage users={users} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} />}
         </div>
       </main>
     </div>

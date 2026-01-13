@@ -393,8 +393,18 @@ const DashboardPage = ({ bets, onNewBet, isAdmin }: { bets: Bet[], onNewBet: () 
             <p className={`text-3xl font-bold mt-2 ${totalProfit >= 0 ? 'text-success-400' : 'text-red-400'}`}>{formatCurrency(totalProfit)}</p>
         </div>
         <div className="rounded-xl p-6 bg-dark-800 border border-white/5">
-            <p className="text-gray-400 text-sm font-medium uppercase">Apostas Ativas</p>
-            <p className="text-3xl font-bold mt-2 text-white">{bets.filter(b => b.status === 'PENDING').length}</p>
+            <p className="text-gray-400 text-sm font-medium uppercase">Apostas</p>
+            <div className="flex items-center gap-4 mt-2">
+                <div>
+                    <p className="text-2xl font-bold text-success-400">{bets.filter(b => b.status === 'WIN').length}</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">Ganhas</p>
+                </div>
+                <div className="w-px h-8 bg-white/10"></div>
+                <div>
+                    <p className="text-2xl font-bold text-red-400">{bets.filter(b => b.status === 'LOSS').length}</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">Perdidas</p>
+                </div>
+            </div>
         </div>
       </div>
 

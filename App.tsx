@@ -425,10 +425,13 @@ const LedgerPage = ({ bets, onEdit, onDelete, onUpdateStatus, onNewBet, isAdmin 
     <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-3xl font-black text-white">Histórico</h2>
-            <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
-                {['Geral', 'Hoje', 'Mês'].map(f => (
-                    <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
-                ))}
+            <div className="flex gap-2 items-center">
+                 {isAdmin && <button onClick={onNewBet} className="px-4 py-2 rounded-lg bg-brand-500 text-white font-bold text-sm hover:bg-brand-400 transition-colors">Nova Aposta</button>}
+                 <div className="flex gap-2 bg-dark-800 p-1 rounded-lg border border-white/5">
+                    {['Geral', 'Hoje', 'Mês'].map(f => (
+                        <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === f ? 'bg-brand-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>{f}</button>
+                    ))}
+                </div>
             </div>
         </div>
         <div className="grid gap-4">

@@ -1340,9 +1340,9 @@ const App = () => {
   if (!user) return <LoginPage onLogin={handleLogin} users={users} isLoading={loading} />;
 
   return (
-    <div className="flex h-[100dvh] bg-dark-950 font-sans overflow-hidden">
+    <div className="flex min-h-screen md:h-screen bg-dark-950 font-sans md:overflow-hidden">
       <Sidebar activePage={page} onNavigate={handleNavigate} user={user} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 relative w-full">
+      <main className="flex-1 w-full p-4 pb-40 md:p-8 md:pb-8 md:overflow-y-auto relative">
         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-brand-900/10 to-transparent pointer-events-none"></div>
         <div className="relative z-10 max-w-full">
           <div className="md:hidden flex items-center justify-between mb-6">

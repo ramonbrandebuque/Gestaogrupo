@@ -1340,11 +1340,11 @@ const App = () => {
   if (!user) return <LoginPage onLogin={handleLogin} users={users} isLoading={loading} />;
 
   return (
-    <div className="flex h-screen bg-dark-950 font-sans overflow-hidden">
+    <div className="flex h-[100dvh] bg-dark-950 font-sans overflow-hidden">
       <Sidebar activePage={page} onNavigate={handleNavigate} user={user} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 relative w-full">
         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-brand-900/10 to-transparent pointer-events-none"></div>
-        <div className="relative z-10">
+        <div className="relative z-10 max-w-full">
           <div className="md:hidden flex items-center justify-between mb-6">
              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-white bg-dark-800 rounded-lg border border-white/10"><span className="material-symbols-outlined">menu</span></button>
              <span className="font-bold text-white">BetManager</span>

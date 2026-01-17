@@ -3,7 +3,8 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   BarChart, Bar, Cell, LabelList, Tooltip
 } from 'recharts';
-import Tesseract from 'tesseract.js';
+
+declare var Tesseract: any;
 
 // --- CONFIGURATION ---
 const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
@@ -500,7 +501,7 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
         // Parsing Logic based on User Pattern (Odd First, then Market (ignore), then Event)
         // We iterate lines and keep "pendingPick" until we find a suitable event line.
         
-        const lines = text.split('\n').filter(l => l.trim().length > 0);
+        const lines = text.split('\n').filter((l: string) => l.trim().length > 0);
         const newSelections: Selection[] = [];
         
         let pendingPick: string | null = null;

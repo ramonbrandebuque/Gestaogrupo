@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   BarChart, Bar, Cell, LabelList, Tooltip
 } from 'recharts';
+import Tesseract from 'tesseract.js';
 
 // --- CONFIGURATION ---
 const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbxCKCU0IvpMKOD_5R574da4pQSDzwJiNC6W9ZDo9Yo63mWqFsAmiSkdMQXhh9t5Q3Df/exec'; 
@@ -459,6 +460,7 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
   const [date, setDate] = useState(editBet?.date || new Date().toISOString().split('T')[0]);
   const [stake, setStake] = useState<string>(editBet?.stake.toString() || '100.00'); // Default to 100
   const [selections, setSelections] = useState<Selection[]>(editBet?.selections || [{ id: Date.now().toString(), event: '', pick: '', odds: 1.0 }]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const updateSelection = (id: string, field: keyof Selection, value: string | number) => {
     setSelections(selections.map(s => s.id === id ? { ...s, [field]: value } : s));
@@ -484,9 +486,109 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
     });
   };
 
+  const handleOCR = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    try {
+        const worker = await Tesseract.createWorker('por'); // Portuguese language
+        const ret = await worker.recognize(file);
+        const text = ret.data.text;
+        await worker.terminate();
+        
+        // Parsing Logic based on User Pattern (Odd First, then Market (ignore), then Event)
+        // We iterate lines and keep "pendingPick" until we find a suitable event line.
+        
+        const lines = text.split('\n').filter(l => l.trim().length > 0);
+        const newSelections: Selection[] = [];
+        
+        let pendingPick: string | null = null;
+        let pendingOdds: number | null = null;
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+
+            // Ignore Header lines explicitly if they contain just "Dupla" + Odd (Global odds)
+            // Example: "Dupla 1.51"
+            if (/^(Dupla|Tripla|Múltipla|Total)\s+\d+[.,]\d{2}/i.test(line)) continue;
+
+            // Check for Odds pattern at end of line (e.g. "1X 1.16")
+            const oddsMatch = line.match(/(\d+[.,]\d{2})\s*$/);
+
+            if (oddsMatch) {
+                // Determine values
+                const oddsVal = parseFloat(oddsMatch[1].replace(',', '.'));
+                const textBefore = line.substring(0, line.lastIndexOf(oddsMatch[1])).trim();
+                
+                // Extra filter for short garbage or noise
+                if (textBefore.length < 2 && !textBefore.includes('X')) continue; 
+
+                // If we found a NEW odds line, we set it as pending.
+                // Note: If we had a pending pick that never found an event, it gets overwritten here.
+                // This handles cases where the OCR read the header as a pick, or missed the event line entirely.
+                pendingPick = textBefore;
+                pendingOdds = oddsVal;
+            } 
+            else if (pendingPick !== null) {
+                // We have a pick waiting for an event.
+                // Heuristics to identify Event line vs Noise (Market):
+                
+                // 1. Is it a known market name? (Ignore these)
+                const isMarket = /^(Chance Dupla|Resultado Final|Ambos|Total de Gols|Handicap|Escanteios|Intervalo|Para ganhar)/i.test(line);
+                
+                // 2. Does it look like an Event? (Has separator ' - ' or ' vs ')
+                // We check specifically for hyphen surrounded by spaces OR just hyphen if OCR missed spaces
+                // But specifically avoiding things that look like dates "12-10"
+                const hasSeparator = line.includes('-') || line.includes(' vs '); 
+
+                if (!isMarket && hasSeparator) {
+                     // It's likely the event line.
+                     // Cleanup Date/Time from event line (e.g. "Amanhã 12:30", "18/01/26 16:45")
+                     const cleanEvent = line.replace(/(\d{2}:\d{2}|Amanhã|Hoje|\d{2}\/\d{2}).*/gi, '').trim();
+                     
+                     newSelections.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        event: cleanEvent,
+                        pick: pendingPick,
+                        odds: pendingOdds!
+                     });
+                     
+                     // Reset state to look for next bet
+                     pendingPick = null;
+                     pendingOdds = null;
+                }
+                // If it IS a market or doesn't have separator, we DO NOT reset pendingPick.
+                // We skip this line and check the next one.
+            }
+        }
+
+        if (newSelections.length > 0) {
+            setSelections(newSelections);
+        } else {
+            alert('Não foi possível identificar as apostas automaticamente. Tente uma imagem mais nítida.');
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert('Erro ao ler a imagem.');
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="max-w-[960px] mx-auto w-full flex flex-col gap-6">
-      <h1 className="text-white text-3xl font-black">{editBet ? 'Editar Aposta' : 'Nova Aposta'}</h1>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h1 className="text-white text-3xl font-black">{editBet ? 'Editar Aposta' : 'Nova Aposta'}</h1>
+        
+        <label className={`flex items-center gap-2 px-4 py-2 bg-dark-800 hover:bg-dark-700 border border-white/10 rounded-lg cursor-pointer transition-colors text-white font-bold text-sm ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
+             <span className="material-symbols-outlined">{isProcessing ? 'hourglass_empty' : 'document_scanner'}</span>
+             {isProcessing ? 'Lendo Bilhete...' : 'Ler Bilhete (Foto)'}
+             <input type="file" accept="image/*" className="hidden" onChange={handleOCR} disabled={isProcessing} />
+        </label>
+      </div>
+
       <div className="bg-dark-800 rounded-xl border border-white/5 p-6 flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
@@ -509,8 +611,8 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
 
         {selections.map(sel => (
           <div key={sel.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 p-3 rounded-lg border border-white/5 bg-dark-700/50">
-            <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Evento" value={sel.event} onChange={(e) => updateSelection(sel.id, 'event', e.target.value)} />
-            <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Aposta" value={sel.pick} onChange={(e) => updateSelection(sel.id, 'pick', e.target.value)} />
+            <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Evento (Time A - Time B)" value={sel.event} onChange={(e) => updateSelection(sel.id, 'event', e.target.value)} />
+            <input className="col-span-5 bg-transparent border-b border-gray-600 text-white outline-none" placeholder="Aposta (Pick)" value={sel.pick} onChange={(e) => updateSelection(sel.id, 'pick', e.target.value)} />
             <input type="number" step="0.01" className="col-span-2 bg-transparent border-b border-gray-600 text-white outline-none text-right" value={sel.odds} onChange={(e) => updateSelection(sel.id, 'odds', parseFloat(e.target.value))} />
           </div>
         ))}

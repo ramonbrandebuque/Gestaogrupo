@@ -493,74 +493,79 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
 
     setIsProcessing(true);
     try {
-        const worker = await Tesseract.createWorker('por'); // Portuguese language
+        if (!Tesseract) {
+            alert('A biblioteca de OCR não foi carregada. Tente recarregar a página.');
+            return;
+        }
+
+        const worker = await Tesseract.createWorker('por'); 
         const ret = await worker.recognize(file);
         const text = ret.data.text;
         await worker.terminate();
         
-        // Parsing Logic based on User Pattern (Odd First, then Market (ignore), then Event)
-        // We iterate lines and keep "pendingPick" until we find a suitable event line.
-        
         const lines = text.split('\n').filter((l: string) => l.trim().length > 0);
         const newSelections: Selection[] = [];
         
-        let pendingPick: string | null = null;
-        let pendingOdds: number | null = null;
+        let lastEvent: string | null = null;
+        let pendingPick: { pick: string, odds: number } | null = null;
 
+        // Enhanced Logic: Supports Event -> Odds AND Odds -> Event
+        // Also buffers the event for a few lines to handle multi-line markets.
+        
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
 
-            // Ignore Header lines explicitly if they contain just "Dupla" + Odd (Global odds)
-            // Example: "Dupla 1.51"
+            // Ignore explicit header lines for multiple bets total
             if (/^(Dupla|Tripla|Múltipla|Total)\s+\d+[.,]\d{2}/i.test(line)) continue;
 
-            // Check for Odds pattern at end of line (e.g. "1X 1.16")
+            // 1. Check for Odds Pattern (e.g. "1X 1.16")
             const oddsMatch = line.match(/(\d+[.,]\d{2})\s*$/);
 
             if (oddsMatch) {
-                // Determine values
                 const oddsVal = parseFloat(oddsMatch[1].replace(',', '.'));
                 const textBefore = line.substring(0, line.lastIndexOf(oddsMatch[1])).trim();
                 
-                // Extra filter for short garbage or noise
+                // Extra filter for noise
                 if (textBefore.length < 2 && !textBefore.includes('X')) continue; 
 
-                // If we found a NEW odds line, we set it as pending.
-                // Note: If we had a pending pick that never found an event, it gets overwritten here.
-                // This handles cases where the OCR read the header as a pick, or missed the event line entirely.
-                pendingPick = textBefore;
-                pendingOdds = oddsVal;
+                // Found Odds. Do we have a pending event?
+                if (lastEvent) {
+                    newSelections.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        event: lastEvent,
+                        pick: textBefore,
+                        odds: oddsVal
+                    });
+                    lastEvent = null; // Consumed
+                    pendingPick = null;
+                } else {
+                    // No event seen yet. Store as pending pick in case event is next.
+                    pendingPick = { pick: textBefore, odds: oddsVal };
+                }
             } 
-            else if (pendingPick !== null) {
-                // We have a pick waiting for an event.
-                // Heuristics to identify Event line vs Noise (Market):
-                
-                // 1. Is it a known market name? (Ignore these)
+            else {
+                // 2. Check for Event Pattern
                 const isMarket = /^(Chance Dupla|Resultado Final|Ambos|Total de Gols|Handicap|Escanteios|Intervalo|Para ganhar)/i.test(line);
-                
-                // 2. Does it look like an Event? (Has separator ' - ' or ' vs ')
-                // We check specifically for hyphen surrounded by spaces OR just hyphen if OCR missed spaces
-                // But specifically avoiding things that look like dates "12-10"
                 const hasSeparator = line.includes('-') || line.includes(' vs '); 
-
+                
                 if (!isMarket && hasSeparator) {
-                     // It's likely the event line.
-                     // Cleanup Date/Time from event line (e.g. "Amanhã 12:30", "18/01/26 16:45")
                      const cleanEvent = line.replace(/(\d{2}:\d{2}|Amanhã|Hoje|\d{2}\/\d{2}).*/gi, '').trim();
                      
-                     newSelections.push({
-                        id: Math.random().toString(36).substr(2, 9),
-                        event: cleanEvent,
-                        pick: pendingPick,
-                        odds: pendingOdds!
-                     });
-                     
-                     // Reset state to look for next bet
-                     pendingPick = null;
-                     pendingOdds = null;
+                     // Found Event. Do we have a pending pick?
+                     if (pendingPick) {
+                         newSelections.push({
+                            id: Math.random().toString(36).substr(2, 9),
+                            event: cleanEvent,
+                            pick: pendingPick.pick,
+                            odds: pendingPick.odds
+                         });
+                         pendingPick = null; // Consumed
+                         lastEvent = null; 
+                     } else {
+                         // No pick yet. Store event for future pick.
+                         lastEvent = cleanEvent;
+                     }
                 }
-                // If it IS a market or doesn't have separator, we DO NOT reset pendingPick.
-                // We skip this line and check the next one.
             }
         }
 
@@ -572,7 +577,7 @@ const NewBetPage = ({ onSave, onCancel, editBet, bettors }: { onSave: (bet: Bet)
 
     } catch (err) {
         console.error(err);
-        alert('Erro ao ler a imagem.');
+        alert('Erro ao ler a imagem. Verifique o console para detalhes.');
     } finally {
         setIsProcessing(false);
     }
